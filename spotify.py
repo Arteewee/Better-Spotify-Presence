@@ -18,16 +18,22 @@ from state_store import (
 from utils import clean_title
 
 
+ACTIVE_PROFILE = getattr(
+    Config,
+    "ACTIVE_SPOTIFY_PROFILE",
+    "primary",
+)
+
 RATE_LIMIT_UNTIL_KEY = (
-    "spotify_rate_limit_until"
+    f"spotify_{ACTIVE_PROFILE}_rate_limit_until"
 )
 
 RATE_LIMIT_REASON_KEY = (
-    "spotify_rate_limit_reason"
+    f"spotify_{ACTIVE_PROFILE}_rate_limit_reason"
 )
 
 RATE_LIMIT_UPDATED_KEY = (
-    "spotify_rate_limit_updated_at"
+    f"spotify_{ACTIVE_PROFILE}_rate_limit_updated_at"
 )
 
 
@@ -93,6 +99,11 @@ class SpotifyClient:
                     "user-read-currently-playing "
                     "user-read-playback-state"
                 ),
+                cache_path=getattr(
+                    Config,
+                    "SPOTIFY_TOKEN_CACHE_PATH",
+                    None,
+                ),
                 open_browser=True,
             ),
             requests_session=self.http_session,
@@ -124,6 +135,11 @@ class SpotifyClient:
         self.last_successful_request = 0.0
 
         self._cooldown_message_printed = False
+
+        print(
+            f"[Spotify] Active profile: "
+            f"{ACTIVE_PROFILE}"
+        )
 
         self._restore_rate_limit_state()
 
@@ -474,6 +490,9 @@ class SpotifyClient:
 
     def get_status(self) -> dict[str, Any]:
         return {
+            "active_profile":
+                ACTIVE_PROFILE,
+
             "rate_limited":
                 self.is_rate_limited(),
 

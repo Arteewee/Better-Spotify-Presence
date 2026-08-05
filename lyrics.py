@@ -1,107 +1,515 @@
-import re
+import time
+from typing import Any, Optional
+
 import requests
+
 from cache import lyrics_cache
 from config import Config
+from lyrics_persistent_cache import (
+    persistent_lyrics_cache,
+)
+from lyrics_providers import (
+    LyricsProvider,
+    ProviderResult,
+    build_providers,
+)
+from state_store import (
+    load_state,
+    update_state,
+)
 
-BASE_URL = "https://lrclib.net/api/get"
+
+PROVIDER_STATS_KEY = (
+    "lyrics_provider_stats"
+)
 
 
 class LyricsManager:
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.session = requests.Session()
-        self.session.headers.update({
-            "User-Agent": "SpotifyDiscordLyrics/1.0"
-        })
 
-    def get_lyrics(self, track: str, artist: str):
-
-
-        cache_key = f"{track}|{artist}"
-        cached = lyrics_cache.get(cache_key)
-
-        # Sudah pernah diambil
-        if cached is not None:
-            return cached
-        
-        try:
-
-            response = self.session.get(
-                BASE_URL,
-                params={
-                    "track_name": track,
-                    "artist_name": artist
-                },
-                timeout=Config.REQUEST_TIMEOUT
-            )
-
-            if response.status_code != 200:
-                print("[Lyrics] Lyrics not found.")
-                return []
-
-            data = response.json()
-
-            synced = data.get("syncedLyrics")
-
-            if not synced:
-                print("[Lyrics] Song has no synced lyrics.")
-                return []
-
-            lyrics = self.parse_lrc(synced)
-
-            lyrics_cache.set(
-                cache_key,
-                lyrics
-            )
-
-            print(f"[Lyrics] Loaded {len(lyrics)} lines.")
-
-            return lyrics
-
-        except requests.exceptions.RequestException as e:
-
-            print(f"[Lyrics] Network Error : {e}")
-            return []
-
-        except Exception as e:
-
-            print(f"[Lyrics] {e}")
-            return []
-
-    def parse_lrc(self, lrc_text):
-
-        lyrics = []
-
-        pattern = re.compile(
-            r"\[(\d+):(\d+\.\d+)\](.*)"
+        self.session.headers.update(
+            {
+                "User-Agent": (
+                    "BetterSpotifyPresence/2.9.5"
+                )
+            }
         )
 
-        for line in lrc_text.splitlines():
+        self.providers = build_providers(
+            self.session
+        )
 
-            match = pattern.match(line)
+        self.provider_stats = (
+            self._load_provider_stats()
+        )
 
-            if not match:
+        self.last_provider: Optional[
+            str
+        ] = None
+
+        self.last_latency = 0.0
+        self.last_confidence = 0.0
+        self.last_cache_source: Optional[
+            str
+        ] = None
+
+    @staticmethod
+    def _default_stats() -> dict[str, Any]:
+        return {
+            "successes": 0,
+            "failures": 0,
+            "timeouts": 0,
+            "total_latency": 0.0,
+            "last_success": 0.0,
+        }
+
+    def _load_provider_stats(
+        self,
+    ) -> dict[str, dict[str, Any]]:
+        state = load_state()
+
+        stats = state.get(
+            PROVIDER_STATS_KEY,
+            {},
+        )
+
+        return (
+            stats
+            if isinstance(stats, dict)
+            else {}
+        )
+
+    def _save_provider_stats(
+        self,
+    ) -> None:
+        update_state(
+            **{
+                PROVIDER_STATS_KEY:
+                    self.provider_stats
+            }
+        )
+
+    def _stats_for(
+        self,
+        provider_name: str,
+    ) -> dict[str, Any]:
+        stats = self.provider_stats.get(
+            provider_name
+        )
+
+        if not isinstance(stats, dict):
+            stats = self._default_stats()
+
+            self.provider_stats[
+                provider_name
+            ] = stats
+
+        return stats
+
+    def _provider_score(
+        self,
+        provider: LyricsProvider,
+    ) -> float:
+        default_order = {
+            "lrclib_exact": 30.0,
+            "lrclib_search": 20.0,
+            "netease": 10.0,
+        }
+
+        stats = self._stats_for(
+            provider.name
+        )
+
+        successes = int(
+            stats.get(
+                "successes",
+                0,
+            )
+        )
+
+        failures = int(
+            stats.get(
+                "failures",
+                0,
+            )
+        )
+
+        attempts = successes + failures
+
+        if attempts == 0:
+            return default_order.get(
+                provider.name,
+                0.0,
+            )
+
+        success_rate = (
+            successes / attempts
+        )
+
+        average_latency = (
+            float(
+                stats.get(
+                    "total_latency",
+                    0.0,
+                )
+            )
+            / max(
+                successes,
+                1,
+            )
+        )
+
+        return (
+            default_order.get(
+                provider.name,
+                0.0,
+            )
+            + success_rate * 50.0
+            - average_latency * 4.0
+            - failures * 0.25
+        )
+
+    def _ranked_providers(
+        self,
+    ) -> list[LyricsProvider]:
+        return sorted(
+            self.providers,
+            key=self._provider_score,
+            reverse=True,
+        )
+
+    def _record_result(
+        self,
+        result: ProviderResult,
+        *,
+        success: bool,
+        timed_out: bool = False,
+    ) -> None:
+        stats = self._stats_for(
+            result.provider
+        )
+
+        key = (
+            "successes"
+            if success
+            else "failures"
+        )
+
+        stats[key] = int(
+            stats.get(
+                key,
+                0,
+            )
+        ) + 1
+
+        if success:
+            stats["total_latency"] = (
+                float(
+                    stats.get(
+                        "total_latency",
+                        0.0,
+                    )
+                )
+                + result.latency
+            )
+
+            stats["last_success"] = (
+                time.time()
+            )
+
+        if timed_out:
+            stats["timeouts"] = int(
+                stats.get(
+                    "timeouts",
+                    0,
+                )
+            ) + 1
+
+        self._save_provider_stats()
+
+    def get_lyrics(
+        self,
+        track: str,
+        artist: str,
+        duration_ms: Optional[int] = None,
+    ) -> list[dict]:
+        memory_key = (
+            f"{track.strip()}|"
+            f"{artist.strip()}|"
+            f"{duration_ms or 0}"
+        )
+
+        memory_cached = (
+            lyrics_cache.get(
+                memory_key
+            )
+        )
+
+        if memory_cached is not None:
+            self.last_provider = (
+                "memory_cache"
+            )
+
+            self.last_latency = 0.0
+            self.last_confidence = 1.0
+            self.last_cache_source = (
+                "memory"
+            )
+
+            print(
+                "[Lyrics] Memory cache hit."
+            )
+
+            return memory_cached
+
+        persistent_cached = (
+            persistent_lyrics_cache.get(
+                track,
+                artist,
+                duration_ms,
+            )
+        )
+
+        if persistent_cached is not None:
+            lyrics_cache.set(
+                memory_key,
+                persistent_cached,
+            )
+
+            self.last_provider = (
+                "persistent_cache"
+            )
+
+            self.last_latency = 0.0
+            self.last_confidence = 1.0
+            self.last_cache_source = (
+                "offline"
+            )
+
+            print(
+                "[Lyrics] Offline cache hit."
+            )
+
+            return persistent_cached
+
+        self.last_cache_source = None
+
+        duration_seconds = (
+            duration_ms / 1000.0
+            if duration_ms
+            else None
+        )
+
+        providers = (
+            self._ranked_providers()
+        )
+
+        if Config.DEBUG:
+            print(
+                "[Lyrics] Provider order: "
+                + " -> ".join(
+                    provider.name
+                    for provider in providers
+                )
+            )
+
+        for provider in providers:
+            print(
+                f"[Lyrics] Trying "
+                f"{provider.name}..."
+            )
+
+            try:
+                result = provider.fetch(
+                    track,
+                    artist,
+                    duration_seconds,
+                )
+
+            except requests.exceptions.Timeout:
+                result = ProviderResult(
+                    provider.name,
+                    [],
+                    Config
+                    .LYRICS_PROVIDER_TIMEOUT,
+                )
+
+                self._record_result(
+                    result,
+                    success=False,
+                    timed_out=True,
+                )
+
+                print(
+                    f"[Lyrics] "
+                    f"{provider.name} timeout."
+                )
+
                 continue
 
-            minute = int(match.group(1))
-            second = float(match.group(2))
+            except requests.exceptions.RequestException as error:
+                result = ProviderResult(
+                    provider.name,
+                    [],
+                    0.0,
+                )
 
-            timestamp = minute * 60 + second
+                self._record_result(
+                    result,
+                    success=False,
+                )
 
-            text = match.group(3).strip()
+                print(
+                    f"[Lyrics] "
+                    f"{provider.name} network "
+                    f"error: {error}"
+                )
 
-            lyrics.append({
-                "time": timestamp,
-                "text": text
-            })
+                continue
 
-        lyrics.sort(key=lambda x: x["time"])
+            except Exception as error:
+                result = ProviderResult(
+                    provider.name,
+                    [],
+                    0.0,
+                )
 
-        return lyrics
+                self._record_result(
+                    result,
+                    success=False,
+                )
+
+                print(
+                    f"[Lyrics] "
+                    f"{provider.name} error: "
+                    f"{error}"
+                )
+
+                continue
+
+            if (
+                result.lyrics
+                and result.confidence
+                >= Config
+                .LYRICS_MIN_CONFIDENCE
+            ):
+                self._record_result(
+                    result,
+                    success=True,
+                )
+
+                lyrics_cache.set(
+                    memory_key,
+                    result.lyrics,
+                )
+
+                persistent_lyrics_cache.set(
+                    track=track,
+                    artist=artist,
+                    duration_ms=duration_ms,
+                    lyrics=result.lyrics,
+                    provider=result.provider,
+                    confidence=(
+                        result.confidence
+                    ),
+                )
+
+                self.last_provider = (
+                    result.provider
+                )
+
+                self.last_latency = (
+                    result.latency
+                )
+
+                self.last_confidence = (
+                    result.confidence
+                )
+
+                print(
+                    "[Lyrics] Loaded "
+                    f"{len(result.lyrics)} lines "
+                    f"from {result.provider} "
+                    f"in {result.latency:.2f}s "
+                    f"(confidence "
+                    f"{result.confidence:.0%})."
+                )
+
+                return result.lyrics
+
+            self._record_result(
+                result,
+                success=False,
+            )
+
+            print(
+                f"[Lyrics] "
+                f"{result.provider} rejected "
+                f"(confidence "
+                f"{result.confidence:.0%})."
+            )
+
+        self.last_provider = None
+        self.last_latency = 0.0
+        self.last_confidence = 0.0
+
+        print(
+            "[Lyrics] All providers failed."
+        )
+
+        return []
+
+    def get_status(self) -> dict[str, Any]:
+        persistent_stats = (
+            persistent_lyrics_cache
+            .get_stats()
+        )
+
+        return {
+            "last_provider":
+                self.last_provider,
+
+            "last_latency":
+                self.last_latency,
+
+            "last_confidence":
+                self.last_confidence,
+
+            "last_cache_source":
+                self.last_cache_source,
+
+            "persistent_cache_entries":
+                persistent_stats[
+                    "entries"
+                ],
+
+            "provider_stats":
+                self.provider_stats,
+
+            "provider_order": [
+                provider.name
+                for provider
+                in self._ranked_providers()
+            ],
+        }
 
 
 lyrics_manager = LyricsManager()
 
 
-def get_lyrics(track, artist):
-    return lyrics_manager.get_lyrics(track, artist)
+def get_lyrics(
+    track: str,
+    artist: str,
+    duration_ms: Optional[int] = None,
+) -> list[dict]:
+    return lyrics_manager.get_lyrics(
+        track,
+        artist,
+        duration_ms,
+    )
+
+
+def get_lyrics_status() -> dict[str, Any]:
+    return lyrics_manager.get_status()
