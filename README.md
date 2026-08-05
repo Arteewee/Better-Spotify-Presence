@@ -1,74 +1,132 @@
-# Better Spotify Presence — Engine Freeze
+# Better Spotify Presence — v2.11.0
 
-## Frozen Engine Version
+Release date: 2026-08-06
 
-- App version: 2.9.5
-- Engine version: 1.0.0
-- Status: Frozen
+## Highlights
 
-## Core Files
+Version 2.11.0 upgrades Better Spotify Presence from a Python script into a more complete desktop application foundation with a graphical interface, runtime controls, diagnostics, multi-profile support, logging, crash recovery, and an integrated auto-updater.
 
-- spotify.py
-- lyrics.py
-- lyrics_providers.py
-- lyrics_persistent_cache.py
-- rpc.py
-- sync_engine.py
-- cache.py
-- state_store.py
-- diagnostics.py
-- config.py
-- main.py
+## Added
 
-## Stable Features
+### Desktop application
 
-- Spotify profile switching
-- Spotify OAuth cache per profile
-- Spotify rate-limit guard
-- Persistent Retry-After cooldown
-- Adaptive Spotify polling
-- Local playback clock
-- Smooth drift correction
-- Anti flick-back
-- Background lyrics loader
-- Background retry
-- Multi lyrics provider
-- Smart provider ranking
-- Metadata matching
-- Confidence scoring
-- Memory lyrics cache
-- Offline persistent lyrics cache
-- Dynamic lyric emoji
-- Section detection
-- Instrumental detection
-- Dynamic album artwork
-- Discord progress timer
-- Spotify and source-code buttons
-- Rich Presence payload optimizer
-- Diagnostics
+- PySide6 desktop interface.
+- System tray integration.
+- Start, pause, resume, and stop controls.
+- Live song metadata, progress, and synchronized lyric display.
+- Runtime status bar for Engine, Spotify, Lyrics, and Discord RPC.
+- Dashboard, Settings, and Log Viewer windows.
+- Console-less launcher support through `SpotifyPlus.pyw`.
 
-## Freeze Rules
+### Live Lyrics Engine
 
-1. Core files may only be modified for confirmed bugs, security issues, or provider/API compatibility.
-2. New GUI, tray, updater, installer, and settings features must be implemented outside the core engine.
-3. Every core change must increase `ENGINE_VERSION`.
-4. A core change must pass the engine test checklist before merge.
-5. Experimental features must not be added directly to frozen engine files.
+- Local lyric clock independent from Spotify polling frequency.
+- Background lyric loading.
+- Protection against stale lyric results after rapidly changing songs.
+- Multi-provider lyric lookup.
+- Metadata matching and confidence scoring.
+- Memory and persistent offline lyric cache.
+- Adaptive Spotify polling near the end of a track.
+- Lyrics remain synchronized while Spotify API requests are in cooldown.
 
-## Engine Test Checklist
+### Spotify Profiles
 
-- Application starts without exception.
-- Discord RPC connects.
-- Spotify active profile is correct.
-- Current song is detected.
-- Song changes do not flick back.
-- Timer does not reset when lyrics change.
-- Lyrics load without blocking playback.
-- Provider timeout does not freeze the loop.
-- Provider fallback works.
-- Offline cache works after restart.
-- Seek triggers correct clock sync.
-- Pause clears activity after configured polls.
-- Spotify HTTP 429 activates persistent cooldown.
-- Restart restores cooldown without new Spotify requests.
-- RPC skips identical payloads.
+- Unlimited Spotify Developer profiles.
+- Add, rename, duplicate, edit, delete, and activate profiles.
+- Separate OAuth cache for every Spotify profile.
+- Automatic migration from the legacy `.env` profile format.
+- Restart flow after changing active credentials.
+
+### Diagnostics and Logging
+
+- Central thread-safe logger.
+- Daily rotating log files.
+- Realtime Log Viewer with level and category filters.
+- Event bus and global runtime status manager.
+- Internal toast notification queue.
+- Fatal error dialog with:
+  - Restart Spotify+
+  - Open Logs
+  - Copy Error
+  - Close
+- Global exception handling for the main thread and background threads.
+
+### Auto Updater
+
+- GitHub Releases update source.
+- Stable, Beta, and Nightly channels.
+- Background update checks.
+- Manual “Check for Updates” button.
+- Update Available dialog with release notes.
+- Background package download with progress and cancellation.
+- SHA-256 integrity verification.
+- Secure ZIP validation.
+- Protection against path traversal and symbolic links.
+- Backup before installation.
+- Automatic restart after applying an update.
+- Rollback when installation fails.
+- Backup retention and update result messages.
+
+## Improved
+
+- Reduced Spotify API request frequency without slowing the live lyric clock.
+- Better song-change detection.
+- More reliable Discord RPC reconnect behavior.
+- Cleaner Settings workflow.
+- Improved GUI layout and minimum sizing.
+- Better handling for Spotify API rate limits.
+- Improved application shutdown and logger flushing.
+- Safer background worker lifecycle.
+
+## Security
+
+- Spotify and Discord credentials remain outside source control.
+- Update packages are verified using SHA-256.
+- Update ZIP files are checked before extraction.
+- Downgrades are rejected by the updater.
+- Unsafe archive paths and symbolic links are rejected.
+
+## Important setup notes
+
+Do not commit or include these files in release packages:
+
+- `.env`
+- `profiles.json`
+- OAuth token cache files
+- `settings.json`
+- log files
+- virtual environments
+- `__pycache__`
+- downloaded update files
+
+User data remains stored under:
+
+```text
+%LOCALAPPDATA%\BetterSpotifyPresence
+```
+
+## Known limitations
+
+- The V2 updater is primarily prepared for Windows.
+- The packaged updater helper executable will be finalized during V3 packaging.
+- Theme Manager is postponed until after the V3 stable release.
+- The first public update package must be uploaded manually to GitHub Releases.
+
+## Upgrade notes
+
+The application version is now:
+
+```text
+2.11.0
+```
+
+The engine remains frozen at:
+
+```text
+1.0.0
+```
+
+## Next milestone
+
+- V2.10.7 Final UI Polish
+- V3 Packaging and Deployment
