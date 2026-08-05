@@ -56,3 +56,7 @@ covers/
 
 # Folder ignore pribadi
 ignore/
+
+# Runtime state
+app_state.json
+*.tmp

@@ -4,7 +4,10 @@ from typing import Any, Optional
 from config import Config
 from lyrics import get_lyrics
 from rpc import clear, update
-from spotify import get_current_song
+from spotify import (
+    get_current_song,
+    get_spotify_status,
+)
 from sync_engine import (
     get_current_line,
     reset,
@@ -12,7 +15,9 @@ from sync_engine import (
 )
 
 
-current_song: Optional[dict[str, Any]] = None
+current_song: Optional[
+    dict[str, Any]
+] = None
 
 last_song_id: Optional[str] = None
 last_line: Optional[str] = None
@@ -21,48 +26,111 @@ last_line: Optional[str] = None
 base_progress_seconds = 0.0
 base_clock_time = 0.0
 
-# Timestamp untuk timer Discord.
+# Timestamp timer Discord.
 song_start_timestamp: Optional[int] = None
 song_end_timestamp: Optional[int] = None
 
 # Waktu polling Spotify terakhir.
 last_spotify_poll_time = 0.0
 
-# Mencegah clear() dikirim terus-menerus ketika Spotify idle.
+# Hindari clear berulang saat idle.
 discord_has_been_cleared = False
 
-# Mencegah satu respons None sementara langsung menghapus activity.
+# Hindari satu respons None sementara langsung clear.
 empty_poll_count = 0
-EMPTY_POLLS_BEFORE_CLEAR = 2
+
+# Hindari log rate-limit berulang-ulang.
+last_rate_limit_log = 0.0
 
 
 def get_local_progress() -> float:
     """
-    Menghasilkan progress lagu berdasarkan clock lokal Python.
-
-    Setelah progress didapat dari Spotify, Python melanjutkan clock
-    secara mandiri tanpa menunggu Spotify API.
+    Progress lokal tidak bergantung pada frekuensi Spotify API.
     """
 
     if current_song is None:
         return 0.0
 
-    elapsed = time.perf_counter() - base_clock_time
+    elapsed = (
+        time.perf_counter()
+        - base_clock_time
+    )
 
-    progress = base_progress_seconds + elapsed
-    duration = current_song["duration"] / 1000.0
+    progress = (
+        base_progress_seconds
+        + elapsed
+    )
+
+    duration = (
+        current_song["duration"]
+        / 1000.0
+    )
 
     return max(
         0.0,
-        min(progress, duration),
+        min(
+            progress,
+            duration,
+        ),
     )
+
+
+def get_remaining_duration() -> float:
+    """
+    Menghitung sisa durasi lagu berdasarkan local clock.
+    """
+
+    if current_song is None:
+        return float("inf")
+
+    duration = (
+        current_song["duration"]
+        / 1000.0
+    )
+
+    return max(
+        0.0,
+        duration - get_local_progress(),
+    )
+
+
+def get_spotify_poll_interval() -> float:
+    """
+    Poll adaptif:
+
+    - normal: hemat request;
+    - hampir selesai: lebih cepat mendeteksi lagu berikutnya;
+    - cooldown: pemanggilan fungsi tetap boleh terjadi,
+      tetapi spotify.py tidak melakukan network request.
+    """
+
+    status = get_spotify_status()
+
+    if status["rate_limited"]:
+
+        # Nilainya tidak memengaruhi API karena spotify.py
+        # langsung mengembalikan cache.
+        return Config.SPOTIFY_REFRESH_RATE
+
+    if (
+        current_song is not None
+
+        and get_remaining_duration()
+        <= Config.SPOTIFY_ENDING_WINDOW
+    ):
+
+        return (
+            Config.SPOTIFY_FAST_REFRESH_RATE
+        )
+
+    return Config.SPOTIFY_REFRESH_RATE
 
 
 def initialize_playback_clock(
     song: dict[str, Any],
 ) -> None:
     """
-    Membuat clock baru ketika lagu berubah.
+    Membuat local playback clock baru.
     """
 
     global base_progress_seconds
@@ -74,17 +142,24 @@ def initialize_playback_clock(
         song["progress"] / 1000.0
     )
 
-    base_clock_time = time.perf_counter()
+    base_clock_time = (
+        time.perf_counter()
+    )
 
     now_unix = time.time()
 
     song_start_timestamp = int(
-        now_unix - base_progress_seconds
+        now_unix
+        - base_progress_seconds
     )
 
     song_end_timestamp = int(
         song_start_timestamp
-        + (song["duration"] / 1000.0)
+
+        + (
+            song["duration"]
+            / 1000.0
+        )
     )
 
 
@@ -92,10 +167,7 @@ def hard_sync_playback_clock(
     api_progress_seconds: float,
 ) -> None:
     """
-    Menyamakan local clock secara langsung.
-
-    Dipakai ketika user melakukan seek atau perbedaan clock terlalu
-    jauh dari progress Spotify.
+    Hard sync saat user seek atau drift sangat besar.
     """
 
     global base_progress_seconds
@@ -107,21 +179,31 @@ def hard_sync_playback_clock(
     if current_song is None:
         return
 
-    base_progress_seconds = api_progress_seconds
-    base_clock_time = time.perf_counter()
+    base_progress_seconds = (
+        api_progress_seconds
+    )
+
+    base_clock_time = (
+        time.perf_counter()
+    )
 
     now_unix = time.time()
 
     song_start_timestamp = int(
-        now_unix - api_progress_seconds
+        now_unix
+        - api_progress_seconds
     )
 
     song_end_timestamp = int(
         song_start_timestamp
-        + (current_song["duration"] / 1000.0)
+
+        + (
+            current_song["duration"]
+            / 1000.0
+        )
     )
 
-    # Paksa lirik diperiksa kembali setelah seek.
+    # Paksa lirik dihitung ulang setelah seek.
     last_line = None
 
 
@@ -129,46 +211,64 @@ def smoothly_correct_clock(
     song: dict[str, Any],
 ) -> None:
     """
-    Mengoreksi drift clock lokal terhadap Spotify.
+    Koreksi drift hanya menggunakan respons API asli.
 
-    Koreksi kecil dilakukan secara halus agar lirik tidak maju-mundur.
-    Seek besar akan menggunakan hard sync.
+    Data cache/rate-limit tidak boleh menarik local clock mundur.
     """
 
     global base_progress_seconds
     global base_clock_time
-    global last_line
 
-    api_progress = song["progress"] / 1000.0
-    local_progress = get_local_progress()
+    if song.get("_from_cache", False):
+        return
 
-    drift = api_progress - local_progress
+    api_progress = (
+        song["progress"] / 1000.0
+    )
+
+    local_progress = (
+        get_local_progress()
+    )
+
+    drift = (
+        api_progress
+        - local_progress
+    )
+
     absolute_drift = abs(drift)
 
-    # User kemungkinan melakukan seek maju/mundur.
+    # Kemungkinan user melakukan seek.
     if absolute_drift >= 1.25:
+
         if Config.DEBUG:
+
             print(
                 f"[Clock] Hard sync: "
                 f"{drift:+.3f}s"
             )
 
-        hard_sync_playback_clock(api_progress)
-        return
-
-    # Untuk drift menengah, lakukan koreksi sebagian agar tidak
-    # menghasilkan perpindahan lirik yang kasar.
-    if absolute_drift >= 0.20:
-        correction = drift * 0.35
-
-        corrected_progress = (
-            local_progress + correction
+        hard_sync_playback_clock(
+            api_progress
         )
 
-        base_progress_seconds = corrected_progress
-        base_clock_time = time.perf_counter()
+        return
+
+    # Koreksi bertahap untuk drift sedang.
+    if absolute_drift >= 0.20:
+
+        correction = drift * 0.35
+
+        base_progress_seconds = (
+            local_progress
+            + correction
+        )
+
+        base_clock_time = (
+            time.perf_counter()
+        )
 
         if Config.DEBUG:
+
             print(
                 f"[Clock] Smooth correction: "
                 f"{correction:+.3f}s"
@@ -179,11 +279,7 @@ def load_song(
     song: dict[str, Any],
 ) -> None:
     """
-    Memproses lagu baru.
-
-    Clock diaktifkan sebelum request lirik, sehingga waktu yang
-    digunakan untuk mengunduh lirik tidak menyebabkan sinkronisasi
-    tertinggal.
+    Memuat metadata, clock, dan synced lyrics.
     """
 
     global current_song
@@ -191,37 +287,53 @@ def load_song(
     global last_line
     global discord_has_been_cleared
 
-    current_song = song
+    current_song = song.copy()
     last_song_id = song["id"]
     last_line = None
 
     reset()
-    initialize_playback_clock(song)
 
-    print("\n==============================")
-    print(f"🎵 {song['name']}")
-    print(f"👤 {song['artist']}")
-    print("==============================")
+    initialize_playback_clock(
+        song
+    )
+
+    print(
+        "\n=============================="
+    )
+
+    print(
+        f"🎵 {song['name']}"
+    )
+
+    print(
+        f"👤 {song['artist']}"
+    )
+
+    print(
+        "=============================="
+    )
 
     loaded_lyrics = get_lyrics(
         song["name"],
         song["artist"],
     )
 
-    set_lyrics(loaded_lyrics)
+    set_lyrics(
+        loaded_lyrics
+    )
 
     if not loaded_lyrics:
-        print("[Lyrics] No synced lyrics found.")
+
+        print(
+            "[Lyrics] No synced lyrics found."
+        )
 
     discord_has_been_cleared = False
 
 
 def update_discord_lyrics() -> None:
     """
-    Mengecek lirik menggunakan local playback clock.
-
-    Discord hanya menerima update ketika baris tampilan berubah.
-    Jika belum ada baris lirik aktif, tampilkan Instrumental.
+    Live lyrics tetap memakai local clock setiap 50 ms.
     """
 
     global last_line
@@ -231,37 +343,166 @@ def update_discord_lyrics() -> None:
 
     current_time = get_local_progress()
 
-    line = get_current_line(current_time)
+    line = get_current_line(
+        current_time
+    )
 
-    display_line = (
+    raw_line = (
         line.strip()
         if isinstance(line, str)
         else ""
     )
 
-    if not display_line:
-
-        display_line = "Instrumental"
-
-    if display_line == last_line:
+    if raw_line == last_line:
         return
 
-    last_line = display_line
+    last_line = raw_line
+
+    printable_line = (
+        raw_line
+        if raw_line
+        else "Instrumental"
+    )
 
     print(
         f"[{current_time:07.2f}] "
-        f"{display_line}"
+        f"{printable_line}"
     )
 
     update(
         song=current_song["name"],
+
         artist=current_song["artist"],
-        lyric=display_line,
+
+        lyric=raw_line,
+
         start=song_start_timestamp,
+
         end=song_end_timestamp,
-        album_cover=current_song.get("album_cover"),
-        album_name=current_song.get("album"),
-        spotify_url=current_song.get("spotify_url"),
+
+        album_cover=current_song.get(
+            "album_cover"
+        ),
+
+        album_name=current_song.get(
+            "album"
+        ),
+
+        spotify_url=current_song.get(
+            "spotify_url"
+        ),
+    )
+
+
+def clear_current_activity() -> None:
+    """
+    Membersihkan state lokal dan Discord.
+    """
+
+    global current_song
+    global last_song_id
+    global last_line
+    global discord_has_been_cleared
+
+    if not discord_has_been_cleared:
+
+        clear()
+
+        discord_has_been_cleared = True
+
+    current_song = None
+    last_song_id = None
+    last_line = None
+
+    reset()
+    set_lyrics([])
+
+
+def handle_cached_song_end() -> None:
+    """
+    Jika Spotify sedang rate limited, kita tidak tahu lagu berikutnya.
+
+    Setelah lagu cache selesai dan melewati grace period,
+    activity lama dibersihkan agar tidak nyangkut.
+    """
+
+    if current_song is None:
+        return
+
+    status = get_spotify_status()
+
+    if not status["rate_limited"]:
+        return
+
+    duration = (
+        current_song["duration"]
+        / 1000.0
+    )
+
+    elapsed = (
+        base_progress_seconds
+
+        + (
+            time.perf_counter()
+            - base_clock_time
+        )
+    )
+
+    if (
+        elapsed
+        >= duration
+        + Config.STALE_ACTIVITY_GRACE
+    ):
+
+        print(
+            "[Spotify] Cached track ended "
+            "during API cooldown."
+        )
+
+        clear_current_activity()
+
+
+def print_rate_limit_status() -> None:
+    """
+    Menampilkan cooldown maksimal sekali per menit.
+    """
+
+    global last_rate_limit_log
+
+    status = get_spotify_status()
+
+    if not status["rate_limited"]:
+        return
+
+    now = time.monotonic()
+
+    if (
+        now - last_rate_limit_log
+        < 60
+    ):
+        return
+
+    last_rate_limit_log = now
+
+    retry_after = status[
+        "retry_after"
+    ]
+
+    hours, remainder = divmod(
+        retry_after,
+        3600,
+    )
+
+    minutes, seconds = divmod(
+        remainder,
+        60,
+    )
+
+    print(
+        "[Spotify] Cooldown remaining: "
+        f"{hours:02d}:"
+        f"{minutes:02d}:"
+        f"{seconds:02d}"
     )
 
 
@@ -269,31 +510,34 @@ def handle_spotify_result(
     song: Optional[dict[str, Any]],
 ) -> None:
     """
-    Memproses hasil polling Spotify.
+    Memproses hasil Spotify poll.
     """
 
     global current_song
     global last_song_id
-    global last_line
     global discord_has_been_cleared
     global empty_poll_count
 
+    status = get_spotify_status()
+
+    # Saat rate limited, None bukan berarti Spotify idle.
+    if (
+        status["rate_limited"]
+        and song is None
+    ):
+        return
+
     if song is None:
+
         empty_poll_count += 1
 
         if (
             empty_poll_count
-            < EMPTY_POLLS_BEFORE_CLEAR
+            < Config.EMPTY_POLLS_BEFORE_CLEAR
         ):
             return
 
-        if not discord_has_been_cleared:
-            clear()
-            discord_has_been_cleared = True
-
-        current_song = None
-        last_song_id = None
-        last_line = None
+        clear_current_activity()
 
         return
 
@@ -302,6 +546,7 @@ def handle_spotify_result(
 
     # Lagu berubah.
     if song["id"] != last_song_id:
+
         print(
             f"\n🎵 Song Changed -> "
             f"{song['name']}"
@@ -309,44 +554,73 @@ def handle_spotify_result(
 
         clear()
         load_song(song)
+
         return
 
-    # Masih lagu yang sama.
-    current_song = song
+    # Metadata cache tetap boleh disimpan, tetapi jangan
+    # memperbarui progress dari data cache.
+    if current_song is not None:
+
+        preserved_progress = (
+            current_song.get(
+                "progress",
+                0,
+            )
+        )
+
+        current_song.update(song)
+
+        if song.get(
+            "_from_cache",
+            False,
+        ):
+
+            current_song["progress"] = (
+                preserved_progress
+            )
 
     smoothly_correct_clock(song)
 
 
 def main() -> None:
+
     global last_spotify_poll_time
 
-    print("===================================")
-    print(" Spotify Discord Lyrics")
-    print("===================================\n")
-
-    spotify_poll_interval = (
-        Config.SPOTIFY_REFRESH_RATE
+    print(
+        "==================================="
     )
 
-    lyric_refresh_interval = (
-        Config.LYRIC_REFRESH_RATE
+    print(
+        " Spotify Discord Lyrics"
+    )
+
+    print(
+        "===================================\n"
     )
 
     while True:
-        loop_start = time.perf_counter()
-        current_clock = time.perf_counter()
 
-        # Spotify API hanya digunakan untuk:
-        # - mendeteksi pergantian lagu;
-        # - mendeteksi pause;
-        # - memperbaiki drift;
-        # - mendeteksi seek.
+        loop_start = (
+            time.perf_counter()
+        )
+
+        current_clock = (
+            time.perf_counter()
+        )
+
+        spotify_poll_interval = (
+            get_spotify_poll_interval()
+        )
+
         if (
             current_clock
             - last_spotify_poll_time
             >= spotify_poll_interval
         ):
-            spotify_song = get_current_song()
+
+            spotify_song = (
+                get_current_song()
+            )
 
             handle_spotify_result(
                 spotify_song
@@ -356,32 +630,49 @@ def main() -> None:
                 current_clock
             )
 
-        # Lirik menggunakan local clock dan dapat diperiksa jauh lebih
-        # sering daripada Spotify API.
         update_discord_lyrics()
 
+        handle_cached_song_end()
+
+        print_rate_limit_status()
+
         loop_duration = (
-            time.perf_counter() - loop_start
+            time.perf_counter()
+            - loop_start
         )
 
         remaining_sleep = max(
             0.0,
-            lyric_refresh_interval
+
+            Config.LYRIC_REFRESH_RATE
             - loop_duration,
         )
 
-        time.sleep(remaining_sleep)
+        time.sleep(
+            remaining_sleep
+        )
 
 
 if __name__ == "__main__":
+
     try:
+
         main()
 
     except KeyboardInterrupt:
-        print("\n[App] Program stopped.")
+
+        print(
+            "\n[App] Program stopped."
+        )
+
         clear()
 
     except Exception as error:
-        print(f"\n[App Error] {error}")
+
+        print(
+            f"\n[App Error] {error}"
+        )
+
         clear()
+
         raise
