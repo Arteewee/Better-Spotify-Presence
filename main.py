@@ -18,7 +18,10 @@ from sync_engine import (
     reset,
     set_lyrics,
 )
-
+from version import (
+    APP_VERSION,
+    ENGINE_VERSION,
+)
 
 current_song: Optional[
     dict[str, Any]
@@ -766,17 +769,11 @@ def handle_spotify_result(
 def main() -> None:
     global last_spotify_poll_time
 
-    print(
-        "==================================="
-    )
-
-    print(
-        " Spotify Discord Lyrics"
-    )
-
-    print(
-        "===================================\n"
-    )
+    print("===================================")
+    print(" Better Spotify Presence")
+    print(f" App Version    : {APP_VERSION}")
+    print(f" Engine Version : {ENGINE_VERSION}")
+    print("===================================\n")
 
     print(
         f" Spotify Profile: "
