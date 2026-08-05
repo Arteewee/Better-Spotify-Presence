@@ -6,14 +6,14 @@ from concurrent.futures import (
 from typing import Any, Optional
 
 from config import Config
-from diagnostics import print_diagnostics
-from lyrics import get_lyrics
-from rpc import clear, update
-from spotify import (
+from core.diagnostics import print_diagnostics
+from core.lyrics import get_lyrics
+from core.rpc import clear, update
+from core.spotify import (
     get_current_song,
     get_spotify_status,
 )
-from sync_engine import (
+from core.sync_engine import (
     get_current_line,
     reset,
     set_lyrics,

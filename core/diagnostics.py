@@ -1,9 +1,9 @@
 import time
 from typing import Any
 
-from lyrics import get_lyrics_status
-from rpc import get_rpc_status
-from spotify import get_spotify_status
+from core.lyrics import get_lyrics_status
+from core.rpc import get_rpc_status
+from core.spotify import get_spotify_status
 
 
 _last_print_time = 0.0
@@ -77,6 +77,36 @@ def build_diagnostics() -> dict[str, Any]:
             rpc.get(
                 "updates_skipped",
                 0,
+            ),
+
+        "spotify_request_attempts":
+            spotify.get(
+                "request_attempts",
+                0,
+            ),
+
+        "spotify_rate_limit_count":
+            spotify.get(
+                "rate_limit_count",
+                0,
+            ),
+
+        "memory_cache_entries":
+            lyrics.get(
+                "memory_cache_stats",
+                {},
+            ).get(
+                "entries",
+                0,
+            ),
+
+        "memory_cache_hit_rate":
+            lyrics.get(
+                "memory_cache_stats",
+                {},
+            ).get(
+                "hit_rate",
+                0.0,
             ),
     }
 

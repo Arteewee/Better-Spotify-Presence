@@ -3,17 +3,19 @@ from typing import Any, Optional
 
 import requests
 
-from cache import lyrics_cache
+from core.cache import lyrics_cache
 from config import Config
-from lyrics_persistent_cache import (
+from app.logger import logger
+from app.event_bus import event_bus
+from core.lyrics_persistent_cache import (
     persistent_lyrics_cache,
 )
-from lyrics_providers import (
+from core.lyrics_providers import (
     LyricsProvider,
     ProviderResult,
     build_providers,
 )
-from state_store import (
+from core.state_store import (
     load_state,
     update_state,
 )
@@ -258,8 +260,21 @@ class LyricsManager:
                 "memory"
             )
 
-            print(
-                "[Lyrics] Memory cache hit."
+            logger.info(
+                "Memory lyrics cache hit",
+                category="CACHE",
+                context={
+                    "track": track,
+                    "artist": artist,
+                },
+            )
+
+            event_bus.publish(
+                "lyrics.cache_hit",
+                source="lyrics",
+                provider="memory_cache",
+                track=track,
+                artist=artist,
             )
 
             return memory_cached
@@ -288,8 +303,21 @@ class LyricsManager:
                 "offline"
             )
 
-            print(
-                "[Lyrics] Offline cache hit."
+            logger.info(
+                "Offline lyrics cache hit",
+                category="CACHE",
+                context={
+                    "track": track,
+                    "artist": artist,
+                },
+            )
+
+            event_bus.publish(
+                "lyrics.cache_hit",
+                source="lyrics",
+                provider="persistent_cache",
+                track=track,
+                artist=artist,
             )
 
             return persistent_cached
@@ -307,18 +335,26 @@ class LyricsManager:
         )
 
         if Config.DEBUG:
-            print(
-                "[Lyrics] Provider order: "
-                + " -> ".join(
-                    provider.name
-                    for provider in providers
-                )
+            logger.debug(
+                "Lyrics provider order",
+                category="LYRICS",
+                context={
+                    "order": " -> ".join(
+                        provider.name
+                        for provider in providers
+                    ),
+                },
             )
 
         for provider in providers:
-            print(
-                f"[Lyrics] Trying "
-                f"{provider.name}..."
+            logger.debug(
+                "Trying lyrics provider",
+                category="LYRICS",
+                context={
+                    "provider": provider.name,
+                    "track": track,
+                    "artist": artist,
+                },
             )
 
             try:
@@ -342,9 +378,16 @@ class LyricsManager:
                     timed_out=True,
                 )
 
-                print(
-                    f"[Lyrics] "
-                    f"{provider.name} timeout."
+                logger.warning(
+                    "Lyrics provider timed out",
+                    category="LYRICS",
+                    context={
+                        "provider": provider.name,
+                        "timeout": (
+                            Config
+                            .LYRICS_PROVIDER_TIMEOUT
+                        ),
+                    },
                 )
 
                 continue
@@ -361,10 +404,13 @@ class LyricsManager:
                     success=False,
                 )
 
-                print(
-                    f"[Lyrics] "
-                    f"{provider.name} network "
-                    f"error: {error}"
+                logger.error(
+                    "Lyrics provider network error",
+                    category="LYRICS",
+                    context={
+                        "provider": provider.name,
+                        "error": str(error),
+                    },
                 )
 
                 continue
@@ -381,10 +427,13 @@ class LyricsManager:
                     success=False,
                 )
 
-                print(
-                    f"[Lyrics] "
-                    f"{provider.name} error: "
-                    f"{error}"
+                logger.error(
+                    "Lyrics provider failed",
+                    category="LYRICS",
+                    context={
+                        "provider": provider.name,
+                        "error": str(error),
+                    },
                 )
 
                 continue
@@ -428,13 +477,34 @@ class LyricsManager:
                     result.confidence
                 )
 
-                print(
-                    "[Lyrics] Loaded "
-                    f"{len(result.lyrics)} lines "
-                    f"from {result.provider} "
-                    f"in {result.latency:.2f}s "
-                    f"(confidence "
-                    f"{result.confidence:.0%})."
+                logger.info(
+                    "Synced lyrics loaded",
+                    category="LYRICS",
+                    context={
+                        "provider": result.provider,
+                        "lines": len(
+                            result.lyrics
+                        ),
+                        "latency": (
+                            f"{result.latency:.2f}s"
+                        ),
+                        "confidence": (
+                            f"{result.confidence:.0%}"
+                        ),
+                        "track": track,
+                        "artist": artist,
+                    },
+                )
+
+                event_bus.publish(
+                    "lyrics.loaded",
+                    source="lyrics",
+                    provider=result.provider,
+                    lines=len(
+                        result.lyrics
+                    ),
+                    track=track,
+                    artist=artist,
                 )
 
                 return result.lyrics
@@ -444,19 +514,38 @@ class LyricsManager:
                 success=False,
             )
 
-            print(
-                f"[Lyrics] "
-                f"{result.provider} rejected "
-                f"(confidence "
-                f"{result.confidence:.0%})."
+            logger.warning(
+                "Lyrics result rejected",
+                category="LYRICS",
+                context={
+                    "provider": result.provider,
+                    "confidence": (
+                        f"{result.confidence:.0%}"
+                    ),
+                    "minimum": (
+                        f"{Config.LYRICS_MIN_CONFIDENCE:.0%}"
+                    ),
+                },
             )
 
         self.last_provider = None
         self.last_latency = 0.0
         self.last_confidence = 0.0
 
-        print(
-            "[Lyrics] All providers failed."
+        logger.error(
+            "All lyrics providers failed",
+            category="LYRICS",
+            context={
+                "track": track,
+                "artist": artist,
+            },
+        )
+
+        event_bus.publish(
+            "lyrics.failed",
+            source="lyrics",
+            track=track,
+            artist=artist,
         )
 
         return []
@@ -465,6 +554,55 @@ class LyricsManager:
         persistent_stats = (
             persistent_lyrics_cache
             .get_stats()
+        )
+
+        memory_stats = (
+            lyrics_cache.get_stats()
+        )
+
+        provider_successes = sum(
+            int(
+                stats.get(
+                    "successes",
+                    0,
+                )
+            )
+            for stats
+            in self.provider_stats.values()
+            if isinstance(
+                stats,
+                dict,
+            )
+        )
+
+        provider_failures = sum(
+            int(
+                stats.get(
+                    "failures",
+                    0,
+                )
+            )
+            for stats
+            in self.provider_stats.values()
+            if isinstance(
+                stats,
+                dict,
+            )
+        )
+
+        provider_timeouts = sum(
+            int(
+                stats.get(
+                    "timeouts",
+                    0,
+                )
+            )
+            for stats
+            in self.provider_stats.values()
+            if isinstance(
+                stats,
+                dict,
+            )
         )
 
         return {
@@ -485,6 +623,21 @@ class LyricsManager:
                     "entries"
                 ],
 
+            "persistent_cache_stats":
+                persistent_stats,
+
+            "memory_cache_stats":
+                memory_stats,
+
+            "provider_successes":
+                provider_successes,
+
+            "provider_failures":
+                provider_failures,
+
+            "provider_timeouts":
+                provider_timeouts,
+
             "provider_stats":
                 self.provider_stats,
 
@@ -494,6 +647,7 @@ class LyricsManager:
                 in self._ranked_providers()
             ],
         }
+
 
 
 lyrics_manager = LyricsManager()

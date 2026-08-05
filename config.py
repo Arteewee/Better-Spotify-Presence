@@ -207,3 +207,70 @@ class Config:
     # ===========================
 
     DEBUG = True
+
+    # ===========================
+    # Runtime Settings
+    # ===========================
+
+    @classmethod
+    def apply_runtime_settings(
+        cls,
+        preferences: dict,
+    ) -> dict:
+        """
+        Terapkan setting yang aman diubah tanpa restart.
+        """
+
+        mapping = {
+            "spotify_refresh_rate":
+                "SPOTIFY_REFRESH_RATE",
+
+            "spotify_fast_refresh_rate":
+                "SPOTIFY_FAST_REFRESH_RATE",
+
+            "spotify_ending_window":
+                "SPOTIFY_ENDING_WINDOW",
+
+            "lyrics_provider_timeout":
+                "LYRICS_PROVIDER_TIMEOUT",
+
+            "lyrics_min_confidence":
+                "LYRICS_MIN_CONFIDENCE",
+
+            "diagnostics_enabled":
+                "DIAGNOSTICS_ENABLED",
+
+            "diagnostics_interval":
+                "DIAGNOSTICS_INTERVAL",
+        }
+
+        changed = {}
+
+        for setting_key, attribute_name in mapping.items():
+            if setting_key not in preferences:
+                continue
+
+            new_value = preferences[
+                setting_key
+            ]
+
+            old_value = getattr(
+                cls,
+                attribute_name,
+            )
+
+            if old_value == new_value:
+                continue
+
+            setattr(
+                cls,
+                attribute_name,
+                new_value,
+            )
+
+            changed[setting_key] = {
+                "old": old_value,
+                "new": new_value,
+            }
+
+        return changed

@@ -1,0 +1,15 @@
+{
+  "version": "2.11.0",
+  "minimum_version": "2.10.5",
+  "channel": "stable",
+  "mandatory": false,
+  "asset_name": "SpotifyPlus-Update-2.11.0.zip",
+  "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "release_notes": [
+    "Added the Spotify+ Auto Updater foundation.",
+    "Added GitHub Release manifest validation.",
+    "Added stable, beta, and nightly update channels."
+  ],
+  "published_at": "2026-08-06T00:00:00Z",
+  "release_url": "https://github.com/Arteewee/Better-Spotify-Presence/releases"
+}

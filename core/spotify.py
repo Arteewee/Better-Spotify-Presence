@@ -10,12 +10,14 @@ from spotipy.exceptions import SpotifyException
 from spotipy.oauth2 import SpotifyOAuth
 
 from config import Config
-from state_store import (
+from app.logger import logger
+from app.event_bus import event_bus
+from core.state_store import (
     load_state,
     remove_state_keys,
     update_state,
 )
-from utils import clean_title
+from core.utils import clean_title
 
 
 ACTIVE_PROFILE = getattr(
@@ -134,11 +136,27 @@ class SpotifyClient:
         self.last_error: Optional[str] = None
         self.last_successful_request = 0.0
 
+        # Runtime dashboard counters.
+        self.request_attempts = 0
+        self.successful_requests = 0
+        self.failed_requests = 0
+        self.rate_limit_count = 0
+        self.cached_returns = 0
+
         self._cooldown_message_printed = False
 
-        print(
-            f"[Spotify] Active profile: "
-            f"{ACTIVE_PROFILE}"
+        logger.info(
+            "Spotify client initialized",
+            category="SPOTIFY",
+            context={
+                "profile": ACTIVE_PROFILE,
+            },
+        )
+
+        event_bus.publish(
+            "spotify.connected",
+            source="spotify",
+            profile=ACTIVE_PROFILE,
         )
 
         self._restore_rate_limit_state()
@@ -185,14 +203,16 @@ class SpotifyClient:
                 self.get_rate_limit_remaining()
             )
 
-            print(
-                "[Spotify] Restored active "
-                "rate-limit cooldown."
-            )
-
-            print(
-                f"[Spotify] No API request for "
-                f"another {remaining} seconds."
+            logger.warning(
+                "Restored active Spotify rate-limit cooldown",
+                category="SPOTIFY",
+                context={
+                    "retry_after": remaining,
+                    "reason": (
+                        self.rate_limit_reason
+                        or "unknown"
+                    ),
+                },
             )
 
             self._cooldown_message_printed = (
@@ -318,6 +338,8 @@ class SpotifyClient:
 
         cached = self.current_song.copy()
 
+        self.cached_returns += 1
+
         cached["_from_cache"] = True
         cached["_rate_limited"] = (
             rate_limited
@@ -416,6 +438,8 @@ class SpotifyClient:
             self._extract_retry_after(error)
         )
 
+        self.rate_limit_count += 1
+
         self.rate_limit_until_unix = (
             time.time()
             + retry_after
@@ -432,24 +456,28 @@ class SpotifyClient:
 
         self._persist_cooldown()
 
-        print(
-            "\n[Spotify] Rate limit active."
+        logger.warning(
+            "Spotify rate limit active",
+            category="SPOTIFY",
+            context={
+                "retry_after": retry_after,
+                "reason": (
+                    self.rate_limit_reason
+                    or "unknown"
+                ),
+                "profile": ACTIVE_PROFILE,
+            },
         )
 
-        print(
-            f"[Spotify] No API request for "
-            f"{retry_after} seconds."
-        )
-
-        if self.rate_limit_reason:
-            print(
-                f"[Spotify] Reason: "
-                f"{self.rate_limit_reason}"
-            )
-
-        print(
-            "[Spotify] Local lyrics clock "
-            "will continue."
+        event_bus.publish(
+            "spotify.rate_limit",
+            source="spotify",
+            retry_after=retry_after,
+            reason=(
+                self.rate_limit_reason
+                or "unknown"
+            ),
+            profile=ACTIVE_PROFILE,
         )
 
         self._cooldown_message_printed = True
@@ -483,9 +511,27 @@ class SpotifyClient:
 
         self._clear_persisted_cooldown()
 
-        print(
-            "[Spotify] Rate-limit cooldown "
-            "ended."
+        logger.info(
+            "Spotify rate-limit cooldown ended",
+            category="SPOTIFY",
+            context={
+                "profile": ACTIVE_PROFILE,
+            },
+        )
+
+        event_bus.publish(
+            "spotify.connected",
+            source="spotify",
+            profile=ACTIVE_PROFILE,
+        )
+
+        event_bus.publish(
+            "notification.show",
+            source="spotify",
+            level="success",
+            title="Spotify Reconnected",
+            message="Spotify API cooldown has ended.",
+            duration=3500,
         )
 
     def get_status(self) -> dict[str, Any]:
@@ -507,7 +553,23 @@ class SpotifyClient:
 
             "last_successful_request":
                 self.last_successful_request,
+
+            "request_attempts":
+                self.request_attempts,
+
+            "successful_requests":
+                self.successful_requests,
+
+            "failed_requests":
+                self.failed_requests,
+
+            "rate_limit_count":
+                self.rate_limit_count,
+
+            "cached_returns":
+                self.cached_returns,
         }
+
 
     def get_current_song(
         self,
@@ -521,9 +583,9 @@ class SpotifyClient:
             if (
                 not self._cooldown_message_printed
             ):
-                print(
-                    "[Spotify] API requests "
-                    "are paused due to cooldown."
+                logger.debug(
+                    "Spotify API requests paused during cooldown",
+                    category="SPOTIFY",
                 )
 
                 self._cooldown_message_printed = (
@@ -538,13 +600,32 @@ class SpotifyClient:
             self._finish_cooldown()
 
         try:
+            self.request_attempts += 1
+
             playback = (
                 self.sp
                 .current_user_playing_track()
             )
 
+            self.successful_requests += 1
+
             self.last_successful_request = (
                 time.time()
+            )
+
+            logger.debug(
+                "Spotify playback request succeeded",
+                category="SPOTIFY",
+                context={
+                    "attempt": self.request_attempts,
+                    "profile": ACTIVE_PROFILE,
+                },
+            )
+
+            event_bus.publish(
+                "spotify.connected",
+                source="spotify",
+                profile=ACTIVE_PROFILE,
             )
 
             self.last_error = None
@@ -604,9 +685,16 @@ class SpotifyClient:
             ):
                 return self._cached_song()
 
-            print(
-                f"[Spotify] Song changed -> "
-                f"{song['name']}"
+            logger.info(
+                "Spotify song changed",
+                category="SPOTIFY",
+                context={
+                    "song": song["name"],
+                    "artist": song.get(
+                        "artist",
+                        "",
+                    ),
+                },
             )
 
             self.previous_song = (
@@ -619,6 +707,8 @@ class SpotifyClient:
             return song.copy()
 
         except SpotifyException as error:
+            self.failed_requests += 1
+
             http_status = getattr(
                 error,
                 "http_status",
@@ -636,20 +726,45 @@ class SpotifyClient:
 
             self.last_error = str(error)
 
-            print(
-                f"[Spotify] API error: "
-                f"{error}"
+            logger.error(
+                "Spotify API error",
+                category="SPOTIFY",
+                context={
+                    "error": str(error),
+                    "profile": ACTIVE_PROFILE,
+                },
+            )
+
+            event_bus.publish(
+                "spotify.error",
+                source="spotify",
+                message=str(error),
+                profile=ACTIVE_PROFILE,
             )
 
             return self._cached_song()
 
         except Exception as error:
+            self.failed_requests += 1
             self.last_error = str(error)
 
-            print(
-                f"[Spotify] Unexpected error: "
-                f"{error}"
+            logger.error(
+                "Unexpected Spotify error",
+                category="SPOTIFY",
+                context={
+                    "error": str(error),
+                    "profile": ACTIVE_PROFILE,
+                },
             )
+
+            event_bus.publish(
+                "spotify.error",
+                source="spotify",
+                message=str(error),
+                profile=ACTIVE_PROFILE,
+            )
+
+            # Error sudah dicatat dan dipublish di atas.
 
             return self._cached_song()
 

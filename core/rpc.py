@@ -9,6 +9,8 @@ from pypresence import Presence
 from pypresence.types import ActivityType
 
 from config import Config
+from app.logger import logger
+from app.event_bus import event_bus
 
 
 CLIENT_ID = Config.DISCORD_CLIENT_ID
@@ -694,12 +696,35 @@ class DiscordRPC:
 
             self.connected = True
 
-            print("[Discord] Connected")
+            logger.info(
+                "Discord RPC connected",
+                category="RPC",
+            )
+
+            event_bus.publish(
+                "rpc.connected",
+                source="rpc",
+            )
 
         except Exception as error:
 
-            print(
-                f"[Discord] Connect error: {error}"
+            logger.error(
+                "Discord RPC connection failed",
+                category="RPC",
+                context={
+                    "error": str(error),
+                },
+            )
+
+            event_bus.publish(
+                "rpc.error",
+                source="rpc",
+                message=str(error),
+            )
+
+            event_bus.publish(
+                "rpc.disconnected",
+                source="rpc",
             )
 
             self.connected = False
@@ -722,8 +747,12 @@ class DiscordRPC:
 
         except Exception as error:
 
-            print(
-                f"[Discord] Clear error: {error}"
+            logger.error(
+                "Discord RPC clear failed",
+                category="RPC",
+                context={
+                    "error": str(error),
+                },
             )
 
             self.connected = False
@@ -882,11 +911,35 @@ class DiscordRPC:
             self.rpc_updates_sent += 1
             self.last_update_time = time.monotonic()
 
+            logger.debug(
+                "Discord presence updated",
+                category="RPC",
+                context={
+                    "song": str(song),
+                    "sent": self.rpc_updates_sent,
+                    "skipped": self.rpc_updates_skipped,
+                },
+            )
+
         except Exception as error:
 
-            print(
-                f"[Discord] Update error: "
-                f"{error}"
+            logger.error(
+                "Discord RPC update failed",
+                category="RPC",
+                context={
+                    "error": str(error),
+                },
+            )
+
+            event_bus.publish(
+                "rpc.error",
+                source="rpc",
+                message=str(error),
+            )
+
+            event_bus.publish(
+                "rpc.disconnected",
+                source="rpc",
             )
 
             self.connected = False

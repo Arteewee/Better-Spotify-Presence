@@ -28,6 +28,11 @@ class PersistentLyricsCache:
             "entries": {},
         }
 
+        self.hits = 0
+        self.misses = 0
+        self.writes = 0
+        self.evictions = 0
+
         self._load()
 
     @staticmethod
@@ -124,6 +129,7 @@ class PersistentLyricsCache:
         ].get(key)
 
         if not isinstance(entry, dict):
+            self.misses += 1
             return None
 
         lyrics = entry.get(
@@ -134,7 +140,10 @@ class PersistentLyricsCache:
             lyrics,
             list,
         ):
+            self.misses += 1
             return None
+
+        self.hits += 1
 
         entry["last_accessed"] = (
             time.time()
@@ -185,6 +194,8 @@ class PersistentLyricsCache:
             "hits": 0,
         }
 
+        self.writes += 1
+
         self._prune()
         self._save()
 
@@ -224,15 +235,36 @@ class PersistentLyricsCache:
                 None,
             )
 
+            self.evictions += 1
+
     def get_stats(self) -> dict[str, Any]:
         entries = self._data[
             "entries"
         ]
 
+        requests = (
+            self.hits
+            + self.misses
+        )
+
+        hit_rate = (
+            self.hits / requests
+            if requests
+            else 0.0
+        )
+
         return {
             "entries": len(entries),
+            "max_entries":
+                Config.PERSISTENT_LYRICS_CACHE_SIZE,
             "path": str(self.path),
+            "hits": self.hits,
+            "misses": self.misses,
+            "writes": self.writes,
+            "evictions": self.evictions,
+            "hit_rate": hit_rate,
         }
+
 
 
 persistent_lyrics_cache = (
