@@ -17,6 +17,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ui.styles import (
+    apply_app_style,
+    apply_responsive_geometry,
+)
 from app.engine import engine
 from app.settings_manager import settings
 from app.logger import logger
@@ -43,18 +47,17 @@ class SettingsWindow(QWidget):
             "Spotify+ Settings"
         )
 
-        self.setMinimumSize(
-            620,
-            650,
-        )
-
-        self.resize(
-            700,
-            720,
+        apply_responsive_geometry(
+            self,
+            preferred_width=720,
+            preferred_height=760,
+            minimum_width=600,
+            minimum_height=580,
         )
 
         self._build_ui()
         self._apply_styles()
+        self._apply_tooltips()
         self.load_settings()
 
     # ==========================================================
@@ -498,6 +501,32 @@ class SettingsWindow(QWidget):
 
         return group
 
+    def _apply_tooltips(self) -> None:
+        self.start_engine_checkbox.setToolTip(
+            "Automatically start the engine when Spotify+ opens."
+        )
+        self.minimize_to_tray_checkbox.setToolTip(
+            "Keep Spotify+ running in the system tray when the window closes."
+        )
+        self.notification_checkbox.setToolTip(
+            "Show desktop notifications for relevant now-playing events."
+        )
+        self.diagnostics_checkbox.setToolTip(
+            "Enable additional runtime diagnostics."
+        )
+        self.manage_profiles_button.setToolTip(
+            "Add, edit, duplicate, delete, or activate Spotify Developer profiles."
+        )
+        self.check_update_button.setToolTip(
+            "Check GitHub Releases for a newer Spotify+ version."
+        )
+        self.update_channel_combo.setToolTip(
+            "Stable is recommended for normal use."
+        )
+        self.save_button.setToolTip(
+            "Save settings and apply runtime-safe changes immediately."
+        )
+
     # ==========================================================
     # Load / Save
     # ==========================================================
@@ -873,90 +902,6 @@ class SettingsWindow(QWidget):
     # ==========================================================
 
     def _apply_styles(self) -> None:
-        self.setStyleSheet(
-            """
-            QWidget {
-                background-color: #121212;
-                color: #F5F5F5;
-                font-family: "Segoe UI";
-                font-size: 13px;
-            }
-
-            QLabel#pageTitle {
-                font-size: 24px;
-                font-weight: 700;
-            }
-
-            QLabel#mutedText {
-                color: #A7A7A7;
-            }
-
-            QLabel#warningText {
-                color: #F5C542;
-                padding-top: 8px;
-            }
-
-            QLabel#statusValue {
-                color: #FFFFFF;
-                font-weight: 700;
-            }
-
-            QGroupBox {
-                background-color: #1E1E1E;
-                border: 1px solid #2B2B2B;
-                border-radius: 12px;
-                margin-top: 14px;
-                padding: 16px;
-                font-weight: 700;
-            }
-
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 14px;
-                padding: 0 6px;
-                color: #1ED760;
-            }
-
-            QLineEdit,
-            QDoubleSpinBox {
-                min-height: 34px;
-                padding: 0 10px;
-                background-color: #292929;
-                border: 1px solid #404040;
-                border-radius: 8px;
-            }
-
-            QLineEdit:focus,
-            QDoubleSpinBox:focus {
-                border-color: #1ED760;
-            }
-
-            QCheckBox {
-                spacing: 8px;
-                min-height: 28px;
-            }
-
-            QPushButton {
-                min-height: 38px;
-                padding: 0 18px;
-                border-radius: 9px;
-                background-color: #2A2A2A;
-                border: 1px solid #444444;
-                font-weight: 600;
-            }
-
-            QPushButton:hover {
-                background-color: #353535;
-            }
-
-            QPushButton#primaryButton {
-                color: #081C0F;
-                background-color: #1ED760;
-                border: none;
-            }
-
-            QPushButton#primaryButton:hover {
-                background-color: #2BE06B;
-            }
-            """
+        apply_app_style(
+            self
         )

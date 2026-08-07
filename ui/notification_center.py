@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ui.styles import TOAST_STYLE
 from app.event_bus import event_bus
 
 
@@ -226,36 +227,7 @@ class ToastWidget(QFrame):
         )
 
         self.setStyleSheet(
-            """
-            QFrame#toast {
-                background-color: #202020;
-                border: 1px solid #444444;
-                border-radius: 12px;
-            }
-
-            QFrame#toast[level="success"] {
-                border-color: #1ED760;
-            }
-
-            QFrame#toast[level="warning"] {
-                border-color: #F5C542;
-            }
-
-            QFrame#toast[level="error"] {
-                border-color: #E05252;
-            }
-
-            QLabel#toastTitle {
-                color: #FFFFFF;
-                font-weight: 700;
-                font-size: 13px;
-            }
-
-            QLabel#toastMessage {
-                color: #CFCFCF;
-                font-size: 12px;
-            }
-            """
+            TOAST_STYLE
         )
 
 

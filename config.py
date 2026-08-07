@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
+from app.profile_manager import profiles
 
 load_dotenv()
 
@@ -9,59 +10,50 @@ load_dotenv()
 class Config:
 
     # ===========================
-    # Spotify Profile Switch
+    # Spotify Profile Manager
     # ===========================
 
-    ACTIVE_SPOTIFY_PROFILE = os.getenv(
-        "ACTIVE_SPOTIFY_PROFILE",
-        "primary",
-    ).strip().lower()
+    ACTIVE_SPOTIFY_PROFILE = (
+        profiles.get_active_profile_name()
+    )
 
     SPOTIFY_PROFILES = {
-        "primary": {
-            "client_id": os.getenv(
-                "SPOTIFY_PRIMARY_CLIENT_ID"
-            ),
-            "client_secret": os.getenv(
-                "SPOTIFY_PRIMARY_CLIENT_SECRET"
-            ),
-            "redirect_uri": os.getenv(
-                "SPOTIFY_PRIMARY_REDIRECT_URI"
-            ),
-        },
-        "secondary": {
-            "client_id": os.getenv(
-                "SPOTIFY_SECONDARY_CLIENT_ID"
-            ),
-            "client_secret": os.getenv(
-                "SPOTIFY_SECONDARY_CLIENT_SECRET"
-            ),
-            "redirect_uri": os.getenv(
-                "SPOTIFY_SECONDARY_REDIRECT_URI"
-            ),
-        },
+        profile_name:
+            profiles.get_profile(
+                profile_name
+            )
+        for profile_name
+        in profiles.list_profiles()
     }
 
-    if ACTIVE_SPOTIFY_PROFILE not in SPOTIFY_PROFILES:
+    if not ACTIVE_SPOTIFY_PROFILE:
         raise ValueError(
-            "ACTIVE_SPOTIFY_PROFILE harus "
-            "'primary' atau 'secondary'."
+            "Belum ada Spotify profile. "
+            "Tambahkan credential di profiles.json "
+            "atau isi legacy primary/secondary di .env "
+            "untuk migrasi otomatis."
         )
 
-    ACTIVE_SPOTIFY_CONFIG = SPOTIFY_PROFILES[
-        ACTIVE_SPOTIFY_PROFILE
-    ]
+    ACTIVE_SPOTIFY_CONFIG = (
+        profiles.get_active_profile()
+    )
 
     SPOTIFY_CLIENT_ID = (
-        ACTIVE_SPOTIFY_CONFIG["client_id"]
+        ACTIVE_SPOTIFY_CONFIG[
+            "client_id"
+        ]
     )
 
     SPOTIFY_CLIENT_SECRET = (
-        ACTIVE_SPOTIFY_CONFIG["client_secret"]
+        ACTIVE_SPOTIFY_CONFIG[
+            "client_secret"
+        ]
     )
 
     SPOTIFY_REDIRECT_URI = (
-        ACTIVE_SPOTIFY_CONFIG["redirect_uri"]
+        ACTIVE_SPOTIFY_CONFIG[
+            "redirect_uri"
+        ]
     )
 
     if not all(
@@ -96,11 +88,9 @@ class Config:
     )
 
     # OAuth token cache dipisahkan per profile.
-    SPOTIFY_TOKEN_CACHE_PATH = str(
-        APP_DATA_DIR
-        / (
-            f"spotify_oauth_"
-            f"{ACTIVE_SPOTIFY_PROFILE}.cache"
+    SPOTIFY_TOKEN_CACHE_PATH = (
+        profiles.get_token_cache_path(
+            ACTIVE_SPOTIFY_PROFILE
         )
     )
 

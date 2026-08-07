@@ -11,6 +11,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ui.styles import (
+    apply_app_style,
+    apply_responsive_geometry,
+)
 from app.logger import logger
 from app.restart_manager import (
     restart_application,
@@ -44,14 +48,12 @@ class FatalErrorDialog(QDialog):
             True
         )
 
-        self.setMinimumSize(
-            680,
-            460,
-        )
-
-        self.resize(
-            760,
-            540,
+        apply_responsive_geometry(
+            self,
+            preferred_width=760,
+            preferred_height=540,
+            minimum_width=580,
+            minimum_height=420,
         )
 
         self._build_ui()
@@ -236,66 +238,6 @@ class FatalErrorDialog(QDialog):
         )
 
     def _apply_styles(self) -> None:
-        self.setStyleSheet(
-            """
-            QDialog {
-                background-color: #121212;
-            }
-
-            QWidget {
-                color: #F5F5F5;
-                font-family: "Segoe UI";
-                font-size: 13px;
-            }
-
-            QLabel#errorTitle {
-                color: #FFFFFF;
-                font-size: 23px;
-                font-weight: 700;
-            }
-
-            QLabel#errorMessage {
-                color: #E6A6A6;
-                font-size: 14px;
-            }
-
-            QLabel#sectionTitle {
-                color: #E05252;
-                font-size: 11px;
-                font-weight: 700;
-            }
-
-            QTextEdit {
-                background-color: #0D0D0D;
-                color: #EAEAEA;
-                border: 1px solid #5A3030;
-                border-radius: 10px;
-                padding: 10px;
-                font-family: "Cascadia Mono", "Consolas";
-                font-size: 12px;
-            }
-
-            QPushButton {
-                min-height: 38px;
-                padding: 0 16px;
-                border-radius: 9px;
-                background-color: #2A2A2A;
-                border: 1px solid #444444;
-                font-weight: 600;
-            }
-
-            QPushButton:hover {
-                background-color: #353535;
-            }
-
-            QPushButton#primaryButton {
-                color: #FFFFFF;
-                background-color: #B73535;
-                border: none;
-            }
-
-            QPushButton#primaryButton:hover {
-                background-color: #C74343;
-            }
-            """
+        apply_app_style(
+            self
         )

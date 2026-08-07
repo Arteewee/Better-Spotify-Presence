@@ -22,6 +22,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ui.styles import (
+    apply_app_style,
+    apply_responsive_geometry,
+)
 from app.engine import engine
 from app.settings_manager import settings
 from app.logger import logger
@@ -119,6 +123,11 @@ class MainWindow(QMainWindow):
         )
         self._manual_update_check = False
 
+        # Performance: avoid repainting expensive status widgets
+        # when the underlying values did not change.
+        self._last_runtime_signature = None
+        self._last_global_status_signature = None
+
         # Diaktifkan oleh desktop.py ketika system tray tersedia.
         self.tray_available = False
         self.force_close = False
@@ -128,19 +137,18 @@ class MainWindow(QMainWindow):
             "Spotify+"
         )
 
-        self.setMinimumSize(
-            760,
-            700,
-        )
-
-        self.resize(
-            860,
-            760,
+        apply_responsive_geometry(
+            self,
+            preferred_width=860,
+            preferred_height=760,
+            minimum_width=720,
+            minimum_height=620,
         )
 
         self._build_ui()
         self._connect_signals()
         self._apply_styles()
+        self._apply_tooltips()
 
         # Status progress diperbarui setiap 500 ms.
         # Tidak menyebabkan request Spotify baru.
@@ -766,6 +774,29 @@ class MainWindow(QMainWindow):
             self.on_update_check_failed
         )
 
+    def _apply_tooltips(self) -> None:
+        self.start_button.setToolTip(
+            "Start the Spotify+ runtime engine."
+        )
+        self.pause_button.setToolTip(
+            "Pause engine processing without closing Spotify+."
+        )
+        self.resume_button.setToolTip(
+            "Resume a paused engine."
+        )
+        self.stop_button.setToolTip(
+            "Stop the engine and clear Discord presence."
+        )
+        self.settings_button.setToolTip(
+            "Open application settings."
+        )
+        self.dashboard_button.setToolTip(
+            "Open live runtime metrics."
+        )
+        self.logs_button.setToolTip(
+            "Open the realtime application log viewer."
+        )
+
     # ==========================================================
     # Engine Controls
     # ==========================================================
@@ -843,6 +874,78 @@ class MainWindow(QMainWindow):
                 "paused",
                 False,
             )
+        )
+
+        runtime_signature = (
+            running,
+            paused,
+            status.get("song"),
+            status.get("artist"),
+            status.get("album"),
+            status.get("lyric"),
+            round(
+                float(
+                    status.get(
+                        "progress",
+                        0.0,
+                    )
+                    or 0.0
+                ),
+                1,
+            ),
+            round(
+                float(
+                    status.get(
+                        "duration",
+                        0.0,
+                    )
+                    or 0.0
+                ),
+                1,
+            ),
+            status.get("profile"),
+            status.get("lyrics_provider"),
+            round(
+                float(
+                    status.get(
+                        "lyrics_confidence",
+                        0.0,
+                    )
+                    or 0.0
+                ),
+                3,
+            ),
+            status.get("cache_source"),
+            bool(
+                status.get(
+                    "rpc_connected",
+                    False,
+                )
+            ),
+            bool(
+                status.get(
+                    "rate_limited",
+                    False,
+                )
+            ),
+            int(
+                status.get(
+                    "retry_after",
+                    0,
+                )
+                or 0
+            ),
+        )
+
+        # We still update progress at 500 ms, but the signature is used
+        # later to avoid unnecessary global-status style refreshes.
+        runtime_changed = (
+            runtime_signature
+            != self._last_runtime_signature
+        )
+
+        self._last_runtime_signature = (
+            runtime_signature
         )
 
         if running and paused:
@@ -1069,8 +1172,9 @@ class MainWindow(QMainWindow):
             ),
         )
 
-        # Refresh live status bar dari snapshot yang baru disinkronkan.
-        self.refresh_global_status()
+        # Refresh live status bar only when its source snapshot changed.
+        if runtime_changed:
+            self.refresh_global_status()
 
         self.profile_value.setText(
             str(profile or "—")
@@ -1373,7 +1477,38 @@ class MainWindow(QMainWindow):
             )
         )
 
+        signature = (
+            level,
+            str(
+                overall.get(
+                    "title",
+                    "Spotify+",
+                )
+            ),
+            str(
+                overall.get(
+                    "message",
+                    "",
+                )
+            ),
+        )
+
+        if (
+            signature
+            == self._last_global_status_signature
+        ):
+            return
+
+        self._last_global_status_signature = (
+            signature
+        )
+
         self.live_status_frame.setProperty(
+            "level",
+            level,
+        )
+
+        self.live_status_dot.setProperty(
             "level",
             level,
         )
@@ -1398,6 +1533,10 @@ class MainWindow(QMainWindow):
 
         self._refresh_widget_style(
             self.live_status_frame
+        )
+
+        self._refresh_widget_style(
+            self.live_status_dot
         )
 
     def refresh_global_status(self) -> None:
@@ -1728,195 +1867,6 @@ class MainWindow(QMainWindow):
     # ==========================================================
 
     def _apply_styles(self) -> None:
-        self.setStyleSheet(
-            """
-            QMainWindow {
-                background-color: #121212;
-            }
-
-            QWidget {
-                color: #F5F5F5;
-                font-family: "Segoe UI";
-                font-size: 14px;
-            }
-
-            QLabel#sectionTitle {
-                color: #1ED760;
-                font-size: 11px;
-                font-weight: 700;
-                letter-spacing: 1px;
-            }
-
-            QLabel#songTitle {
-                color: #FFFFFF;
-                font-size: 24px;
-                font-weight: 700;
-            }
-
-            QLabel#secondaryText {
-                color: #E5E5E5;
-                font-size: 15px;
-                font-weight: 600;
-            }
-
-            QLabel#mutedText {
-                color: #A7A7A7;
-                font-size: 12px;
-            }
-
-            QLabel#lyricText {
-                color: #FFFFFF;
-                font-size: 18px;
-                font-weight: 600;
-                padding: 12px;
-            }
-
-            QLabel#statusValue {
-                color: #FFFFFF;
-                font-weight: 600;
-            }
-
-            QLabel#footerText {
-                color: #6F6F6F;
-                font-size: 11px;
-            }
-
-            QFrame#card {
-                background-color: #1E1E1E;
-                border: 1px solid #2B2B2B;
-                border-radius: 14px;
-            }
-
-            QLabel[status="running"] {
-                color: #081C0F;
-                background-color: #1ED760;
-                border-radius: 12px;
-                padding: 7px 16px;
-                font-weight: 700;
-            }
-
-            QLabel[status="paused"] {
-                color: #1F1600;
-                background-color: #F5C542;
-                border-radius: 12px;
-                padding: 7px 16px;
-                font-weight: 700;
-            }
-
-            QLabel[status="stopped"] {
-                color: #D0D0D0;
-                background-color: #333333;
-                border-radius: 12px;
-                padding: 7px 16px;
-                font-weight: 700;
-            }
-
-            QLabel[status="error"] {
-                color: #FFFFFF;
-                background-color: #C62828;
-                border-radius: 12px;
-                padding: 7px 16px;
-                font-weight: 700;
-            }
-
-            QFrame#liveStatusBar {
-                background-color: #242424;
-                border: 1px solid #3A3A3A;
-                border-radius: 10px;
-            }
-
-            QFrame#liveStatusBar[level="success"] {
-                border-color: #1ED760;
-            }
-
-            QFrame#liveStatusBar[level="warning"] {
-                border-color: #F5C542;
-            }
-
-            QFrame#liveStatusBar[level="error"] {
-                border-color: #E05252;
-            }
-
-            QLabel#liveStatusDot {
-                color: #A7A7A7;
-                font-size: 16px;
-            }
-
-            QFrame#liveStatusBar[level="success"] QLabel#liveStatusDot {
-                color: #1ED760;
-            }
-
-            QFrame#liveStatusBar[level="warning"] QLabel#liveStatusDot {
-                color: #F5C542;
-            }
-
-            QFrame#liveStatusBar[level="error"] QLabel#liveStatusDot {
-                color: #E05252;
-            }
-
-            QLabel#liveStatusTitle {
-                color: #FFFFFF;
-                font-weight: 700;
-            }
-
-            QLabel#liveStatusMessage {
-                color: #A7A7A7;
-            }
-
-            QProgressBar {
-                background-color: #3A3A3A;
-                border: none;
-                border-radius: 4px;
-                min-height: 8px;
-                max-height: 8px;
-            }
-
-            QProgressBar::chunk {
-                background-color: #1ED760;
-                border-radius: 4px;
-            }
-
-            QPushButton {
-                min-height: 42px;
-                padding: 0 18px;
-                border-radius: 10px;
-                font-weight: 600;
-            }
-
-            QPushButton#primaryButton {
-                color: #081C0F;
-                background-color: #1ED760;
-                border: none;
-            }
-
-            QPushButton#primaryButton:hover {
-                background-color: #2BE06B;
-            }
-
-            QPushButton#secondaryButton {
-                color: #FFFFFF;
-                background-color: #2A2A2A;
-                border: 1px solid #444444;
-            }
-
-            QPushButton#secondaryButton:hover {
-                background-color: #353535;
-            }
-
-            QPushButton#dangerButton {
-                color: #FFFFFF;
-                background-color: #3A2020;
-                border: 1px solid #6B3030;
-            }
-
-            QPushButton#dangerButton:hover {
-                background-color: #512626;
-            }
-
-            QPushButton:disabled {
-                color: #676767;
-                background-color: #242424;
-                border-color: #303030;
-            }
-            """
+        apply_app_style(
+            self
         )

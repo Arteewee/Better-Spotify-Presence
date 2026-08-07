@@ -2,10 +2,14 @@ from typing import Any
 
 from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtGui import (
+    QColor,
     QCloseEvent,
+    QFont,
+    QTextCharFormat,
     QTextCursor,
 )
 from PySide6.QtWidgets import (
+    QFrame,
     QApplication,
     QCheckBox,
     QComboBox,
@@ -18,6 +22,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ui.styles import (
+    apply_app_style,
+    apply_responsive_geometry,
+)
 from app.logger import logger
 
 
@@ -77,14 +85,12 @@ class LogViewerWindow(QWidget):
             "Spotify+ Log Viewer"
         )
 
-        self.setMinimumSize(
-            820,
-            560,
-        )
-
-        self.resize(
-            980,
-            680,
+        apply_responsive_geometry(
+            self,
+            preferred_width=980,
+            preferred_height=680,
+            minimum_width=700,
+            minimum_height=540,
         )
 
         self._build_ui()
@@ -145,7 +151,7 @@ class LogViewerWindow(QWidget):
         filter_row = QHBoxLayout()
 
         filter_row.setSpacing(
-            10
+            12
         )
 
         level_label = QLabel(
@@ -156,7 +162,22 @@ class LogViewerWindow(QWidget):
             "mutedText"
         )
 
+        level_label.setContentsMargins(
+            0,
+            0,
+            2,
+            0,
+        )
+
         self.level_combo = QComboBox()
+
+        self.level_combo.setObjectName(
+            "logFilterCombo"
+        )
+
+        self.level_combo.setMinimumWidth(
+            118
+        )
 
         self.level_combo.addItems(
             [
@@ -177,7 +198,22 @@ class LogViewerWindow(QWidget):
             "mutedText"
         )
 
+        category_label.setContentsMargins(
+            6,
+            0,
+            2,
+            0,
+        )
+
         self.category_combo = QComboBox()
+
+        self.category_combo.setObjectName(
+            "logFilterCombo"
+        )
+
+        self.category_combo.setMinimumWidth(
+            138
+        )
 
         self.category_combo.addItems(
             [
@@ -208,16 +244,58 @@ class LogViewerWindow(QWidget):
             level_label
         )
 
-        filter_row.addWidget(
+        level_frame = QFrame()
+        level_frame.setObjectName(
+            "logFilterFrame"
+        )
+
+        level_frame_layout = QHBoxLayout(
+            level_frame
+        )
+        level_frame_layout.setContentsMargins(
+            0,
+            0,
+            0,
+            0,
+        )
+        level_frame_layout.setSpacing(
+            0
+        )
+        level_frame_layout.addWidget(
             self.level_combo
+        )
+
+        filter_row.addWidget(
+            level_frame
         )
 
         filter_row.addWidget(
             category_label
         )
 
-        filter_row.addWidget(
+        category_frame = QFrame()
+        category_frame.setObjectName(
+            "logFilterFrame"
+        )
+
+        category_frame_layout = QHBoxLayout(
+            category_frame
+        )
+        category_frame_layout.setContentsMargins(
+            0,
+            0,
+            0,
+            0,
+        )
+        category_frame_layout.setSpacing(
+            0
+        )
+        category_frame_layout.addWidget(
             self.category_combo
+        )
+
+        filter_row.addWidget(
+            category_frame
         )
 
         filter_row.addStretch()
@@ -403,10 +481,8 @@ class LogViewerWindow(QWidget):
         self.log_text.clear()
 
         for entry in filtered:
-            self.log_text.append(
-                self._format_entry(
-                    entry
-                )
+            self._append_colored_entry(
+                entry
             )
 
         self._update_status(
@@ -461,10 +537,8 @@ class LogViewerWindow(QWidget):
         self,
         entry: dict[str, Any],
     ) -> None:
-        self.log_text.append(
-            self._format_entry(
-                entry
-            )
+        self._append_colored_entry(
+            entry
         )
 
         if (
@@ -472,6 +546,141 @@ class LogViewerWindow(QWidget):
             .isChecked()
         ):
             self._scroll_to_bottom()
+
+    def _append_colored_entry(
+        self,
+        entry: dict[str, Any],
+    ) -> None:
+        """
+        Render a log line using QTextCharFormat so severity levels
+        remain easy to scan without converting the whole viewer to HTML.
+        """
+
+        cursor = self.log_text.textCursor()
+
+        cursor.movePosition(
+            QTextCursor.MoveOperation.End
+        )
+
+        # Add a newline between entries, but not before the first one.
+        if not self.log_text.document().isEmpty():
+            cursor.insertText(
+                "\n"
+            )
+
+        time_text = str(
+            entry.get(
+                "time",
+                "--:--:--",
+            )
+        )
+
+        level = str(
+            entry.get(
+                "level",
+                "INFO",
+            )
+        ).upper()
+
+        category = str(
+            entry.get(
+                "category",
+                "APP",
+            )
+        ).upper()
+
+        message = str(
+            entry.get(
+                "message",
+                "",
+            )
+        )
+
+        context = entry.get(
+            "context"
+        )
+
+        default_format = QTextCharFormat()
+        default_format.setForeground(
+            QColor(
+                "#EAEAEA"
+            )
+        )
+
+        muted_format = QTextCharFormat()
+        muted_format.setForeground(
+            QColor(
+                "#A7A7A7"
+            )
+        )
+
+        level_format = QTextCharFormat()
+        level_format.setFontWeight(
+            QFont.Weight.DemiBold
+        )
+
+        level_colors = {
+            "DEBUG": "#8AB4F8",
+            "INFO": "#1ED760",
+            "WARNING": "#F5C542",
+            "ERROR": "#FF6B6B",
+            "CRITICAL": "#FF4D9D",
+        }
+
+        level_format.setForeground(
+            QColor(
+                level_colors.get(
+                    level,
+                    "#EAEAEA",
+                )
+            )
+        )
+
+        category_format = QTextCharFormat()
+        category_format.setForeground(
+            QColor(
+                "#B7C9E2"
+            )
+        )
+        category_format.setFontWeight(
+            QFont.Weight.Medium
+        )
+
+        cursor.insertText(
+            f"{time_text}  ",
+            muted_format,
+        )
+
+        cursor.insertText(
+            f"{level:<8} ",
+            level_format,
+        )
+
+        cursor.insertText(
+            f"{category:<9} ",
+            category_format,
+        )
+
+        cursor.insertText(
+            message,
+            default_format,
+        )
+
+        if context:
+            context_text = ", ".join(
+                f"{key}={value}"
+                for key, value
+                in context.items()
+            )
+
+            cursor.insertText(
+                f"  |  {context_text}",
+                muted_format,
+            )
+
+        self.log_text.setTextCursor(
+            cursor
+        )
 
     @staticmethod
     def _format_entry(
@@ -630,69 +839,6 @@ class LogViewerWindow(QWidget):
     # ==========================================================
 
     def _apply_styles(self) -> None:
-        self.setStyleSheet(
-            """
-            QWidget {
-                background-color: #121212;
-                color: #F5F5F5;
-                font-family: "Segoe UI";
-                font-size: 13px;
-            }
-
-            QLabel#pageTitle {
-                font-size: 24px;
-                font-weight: 700;
-            }
-
-            QLabel#mutedText {
-                color: #A7A7A7;
-            }
-
-            QTextEdit {
-                background-color: #0D0D0D;
-                color: #EAEAEA;
-                border: 1px solid #303030;
-                border-radius: 10px;
-                padding: 10px;
-                font-family: "Cascadia Mono", "Consolas";
-                font-size: 12px;
-                selection-background-color: #1ED760;
-                selection-color: #081C0F;
-            }
-
-            QComboBox {
-                min-height: 34px;
-                padding: 0 10px;
-                background-color: #292929;
-                border: 1px solid #404040;
-                border-radius: 8px;
-            }
-
-            QCheckBox {
-                spacing: 8px;
-            }
-
-            QPushButton {
-                min-height: 38px;
-                padding: 0 15px;
-                border-radius: 9px;
-                background-color: #2A2A2A;
-                border: 1px solid #444444;
-                font-weight: 600;
-            }
-
-            QPushButton:hover {
-                background-color: #353535;
-            }
-
-            QPushButton#primaryButton {
-                color: #081C0F;
-                background-color: #1ED760;
-                border: none;
-            }
-
-            QPushButton#primaryButton:hover {
-                background-color: #2BE06B;
-            }
-            """
+        apply_app_style(
+            self
         )

@@ -12,6 +12,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ui.styles import (
+    apply_app_style,
+    apply_responsive_geometry,
+)
 from app.engine import engine
 
 
@@ -30,14 +34,12 @@ class DashboardWindow(QWidget):
             "Spotify+ Runtime Dashboard"
         )
 
-        self.setMinimumSize(
-            760,
-            680,
-        )
-
-        self.resize(
-            880,
-            760,
+        apply_responsive_geometry(
+            self,
+            preferred_width=900,
+            preferred_height=720,
+            minimum_width=720,
+            minimum_height=560,
         )
 
         self.value_labels: dict[
@@ -53,7 +55,7 @@ class DashboardWindow(QWidget):
         )
 
         self.timer.setInterval(
-            500
+            1000
         )
 
         self.timer.timeout.connect(
@@ -627,55 +629,6 @@ class DashboardWindow(QWidget):
         )
 
     def _apply_styles(self) -> None:
-        self.setStyleSheet(
-            """
-            QWidget {
-                background-color: #121212;
-                color: #F5F5F5;
-                font-family: "Segoe UI";
-                font-size: 13px;
-            }
-
-            QLabel#pageTitle {
-                font-size: 24px;
-                font-weight: 700;
-            }
-
-            QLabel#sectionTitle {
-                color: #1ED760;
-                font-size: 11px;
-                font-weight: 700;
-                letter-spacing: 1px;
-            }
-
-            QLabel#mutedText {
-                color: #A7A7A7;
-                font-size: 12px;
-            }
-
-            QLabel#metricValue {
-                color: #FFFFFF;
-                font-weight: 600;
-            }
-
-            QFrame#dashboardCard {
-                background-color: #1E1E1E;
-                border: 1px solid #2B2B2B;
-                border-radius: 13px;
-                padding: 10px;
-            }
-
-            QProgressBar {
-                background-color: #3A3A3A;
-                border: none;
-                border-radius: 4px;
-                min-height: 8px;
-                max-height: 8px;
-            }
-
-            QProgressBar::chunk {
-                background-color: #1ED760;
-                border-radius: 4px;
-            }
-            """
+        apply_app_style(
+            self
         )

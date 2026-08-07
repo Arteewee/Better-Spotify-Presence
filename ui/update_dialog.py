@@ -18,6 +18,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ui.styles import (
+    apply_app_style,
+    apply_responsive_geometry,
+)
 from app.update_manager import (
     UpdateCheckError,
     UpdateDownloadError,
@@ -143,13 +147,12 @@ class UpdateAvailableDialog(QDialog):
         self.setWindowTitle(
             "Spotify+ Update Available"
         )
-        self.setMinimumSize(
-            620,
-            460,
-        )
-        self.resize(
-            700,
-            520,
+        apply_responsive_geometry(
+            self,
+            preferred_width=700,
+            preferred_height=560,
+            minimum_width=580,
+            minimum_height=440,
         )
 
         self._build_ui()
@@ -333,6 +336,19 @@ class UpdateAvailableDialog(QDialog):
             self.install_update
         )
 
+        self.release_button.setToolTip(
+            "Open this release on GitHub."
+        )
+        self.download_button.setToolTip(
+            "Download and verify the update package in the background."
+        )
+        self.cancel_button.setToolTip(
+            "Cancel the current update download."
+        )
+        self.install_button.setToolTip(
+            "Back up the current installation, apply the update, and restart."
+        )
+
     def start_download(self) -> None:
         if (
             self._download_thread is not None
@@ -497,7 +513,7 @@ class UpdateAvailableDialog(QDialog):
             1000
         )
         self.download_status.setText(
-            "Download complete — SHA-256 verified"
+            "Ready to install — SHA-256 verified"
         )
         self.download_details.setText(
             path
@@ -572,6 +588,22 @@ class UpdateAvailableDialog(QDialog):
         ):
             return
 
+        self.install_button.setEnabled(
+            False
+        )
+        self.download_button.setEnabled(
+            False
+        )
+        self.later_button.setEnabled(
+            False
+        )
+        self.release_button.setEnabled(
+            False
+        )
+        self.download_status.setText(
+            "Preparing installation..."
+        )
+
         launched = (
             update_manager
             .launch_installer(
@@ -581,6 +613,19 @@ class UpdateAvailableDialog(QDialog):
         )
 
         if not launched:
+            self.install_button.setEnabled(
+                True
+            )
+            self.later_button.setEnabled(
+                True
+            )
+            self.release_button.setEnabled(
+                True
+            )
+            self.download_status.setText(
+                "Installation could not be started"
+            )
+
             QMessageBox.critical(
                 self,
                 "Update Installation Failed",
@@ -674,89 +719,8 @@ class UpdateAvailableDialog(QDialog):
         webbrowser.open(url)
 
     def _apply_styles(self) -> None:
-        self.setStyleSheet(
-            """
-            QDialog {
-                background-color: #121212;
-            }
-
-            QWidget {
-                color: #F5F5F5;
-                font-family: "Segoe UI";
-                font-size: 13px;
-            }
-
-            QLabel#pageTitle {
-                font-size: 23px;
-                font-weight: 700;
-            }
-
-            QLabel#versionText {
-                color: #FFFFFF;
-                font-size: 15px;
-                font-weight: 700;
-            }
-
-            QLabel#mutedText {
-                color: #A7A7A7;
-            }
-
-            QLabel#warningText {
-                color: #F5C542;
-            }
-
-            QLabel#sectionTitle {
-                color: #1ED760;
-                font-size: 11px;
-                font-weight: 700;
-            }
-
-            QTextEdit {
-                background-color: #0D0D0D;
-                color: #EAEAEA;
-                border: 1px solid #303030;
-                border-radius: 10px;
-                padding: 10px;
-            }
-
-            QProgressBar {
-                background-color: #303030;
-                border: none;
-                border-radius: 5px;
-                min-height: 10px;
-                max-height: 10px;
-            }
-
-            QProgressBar::chunk {
-                background-color: #1ED760;
-                border-radius: 5px;
-            }
-
-            QPushButton {
-                min-height: 38px;
-                padding: 0 16px;
-                border-radius: 9px;
-                background-color: #2A2A2A;
-                border: 1px solid #444444;
-                font-weight: 600;
-            }
-
-            QPushButton:hover {
-                background-color: #353535;
-            }
-
-            QPushButton#primaryButton {
-                color: #081C0F;
-                background-color: #1ED760;
-                border: none;
-            }
-
-            QPushButton:disabled {
-                color: #676767;
-                background-color: #242424;
-                border-color: #303030;
-            }
-            """
+        apply_app_style(
+            self
         )
 
 

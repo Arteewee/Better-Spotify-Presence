@@ -19,8 +19,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ui.styles import (
+    apply_app_style,
+    apply_responsive_geometry,
+)
 from app.settings_manager import settings
-from app.logger import logger
 
 
 class AddProfileDialog(QDialog):
@@ -194,14 +197,12 @@ class ProfileManagerWindow(QWidget):
             "Spotify+ Profile Manager"
         )
 
-        self.setMinimumSize(
-            820,
-            580,
-        )
-
-        self.resize(
-            920,
-            640,
+        apply_responsive_geometry(
+            self,
+            preferred_width=920,
+            preferred_height=700,
+            minimum_width=700,
+            minimum_height=560,
         )
 
         self._build_ui()
@@ -698,17 +699,6 @@ class ProfileManagerWindow(QWidget):
                 profile["name"]
             )
 
-            logger.info(
-                "Spotify profile created",
-                category="PROFILE",
-                context={
-                    "profile": profile["name"],
-                    "make_active": values[
-                        "make_active"
-                    ],
-                },
-            )
-
             if values["make_active"]:
                 self._emit_restart(
                     "active_profile_changed",
@@ -770,15 +760,6 @@ class ProfileManagerWindow(QWidget):
                 clean_name
             )
 
-            logger.info(
-                "Spotify profile renamed",
-                category="PROFILE",
-                context={
-                    "old_name": old_name,
-                    "new_name": clean_name,
-                },
-            )
-
             if was_active:
                 self._emit_restart(
                     "active_profile_renamed",
@@ -818,17 +799,6 @@ class ProfileManagerWindow(QWidget):
 
             self.reload_profiles(
                 profile["name"]
-            )
-
-            logger.info(
-                "Spotify profile duplicated",
-                category="PROFILE",
-                context={
-                    "source": self._selected_profile,
-                    "new_profile": profile[
-                        "name"
-                    ],
-                },
             )
 
         except Exception as error:
@@ -871,15 +841,6 @@ class ProfileManagerWindow(QWidget):
             self._selected_profile = ""
             self.reload_profiles()
 
-            logger.info(
-                "Spotify profile deleted",
-                category="PROFILE",
-                context={
-                    "profile": selected,
-                    "was_active": was_active,
-                },
-            )
-
             if was_active:
                 self._emit_restart(
                     "active_profile_deleted",
@@ -912,14 +873,6 @@ class ProfileManagerWindow(QWidget):
             )
 
             self._emit_profiles_changed()
-
-            logger.info(
-                "Spotify profile credentials saved",
-                category="PROFILE",
-                context={
-                    "profile": self._selected_profile,
-                },
-            )
 
             self._emit_restart(
                 "profile_credentials_changed",
@@ -956,14 +909,6 @@ class ProfileManagerWindow(QWidget):
             )
 
             if changed:
-                logger.info(
-                    "Active Spotify profile changed",
-                    category="PROFILE",
-                    context={
-                        "profile": self._selected_profile,
-                    },
-                )
-
                 self._emit_restart(
                     "active_profile_changed",
                     self._selected_profile,
@@ -1001,33 +946,10 @@ class ProfileManagerWindow(QWidget):
         reason: str,
         profile_name: str,
     ) -> None:
-        reason_labels = {
-            "active_profile_changed":
-                "Spotify active profile",
-
-            "active_profile_renamed":
-                "Active profile name",
-
-            "active_profile_deleted":
-                "Active profile deletion",
-
-            "profile_credentials_changed":
-                (
-                    "Spotify credentials "
-                    f"({profile_name})"
-                ),
-        }
-
         self.restart_required.emit(
             {
                 "reason": reason,
                 "profile": profile_name,
-                "items": [
-                    reason_labels.get(
-                        reason,
-                        "Spotify profile configuration",
-                    )
-                ],
             }
         )
 
@@ -1043,6 +965,26 @@ class ProfileManagerWindow(QWidget):
             )
         )
 
+    def _apply_tooltips(self) -> None:
+        self.add_button.setToolTip(
+            "Create a new Spotify Developer profile."
+        )
+        self.rename_button.setToolTip(
+            "Rename the selected profile."
+        )
+        self.duplicate_button.setToolTip(
+            "Create a copy of the selected profile."
+        )
+        self.delete_button.setToolTip(
+            "Delete the selected profile."
+        )
+        self.save_button.setToolTip(
+            "Save Client ID, Client Secret, and Redirect URI."
+        )
+        self.set_active_button.setToolTip(
+            "Use this profile after Spotify+ restarts."
+        )
+
     def show_window(self) -> None:
         self.reload_profiles()
         self.showNormal()
@@ -1050,114 +992,6 @@ class ProfileManagerWindow(QWidget):
         self.activateWindow()
 
     def _apply_styles(self) -> None:
-        self.setStyleSheet(
-            """
-            QWidget {
-                background-color: #121212;
-                color: #F5F5F5;
-                font-family: "Segoe UI";
-                font-size: 13px;
-            }
-
-            QLabel#pageTitle {
-                font-size: 24px;
-                font-weight: 700;
-            }
-
-            QLabel#sectionTitle {
-                color: #1ED760;
-                font-size: 11px;
-                font-weight: 700;
-            }
-
-            QLabel#mutedText {
-                color: #A7A7A7;
-            }
-
-            QLabel#warningText {
-                color: #F5C542;
-            }
-
-            QLabel#profileName {
-                font-size: 22px;
-                font-weight: 700;
-            }
-
-            QLabel[active="true"] {
-                color: #081C0F;
-                background-color: #1ED760;
-                border-radius: 10px;
-                padding: 6px 12px;
-                font-weight: 700;
-            }
-
-            QLabel[active="false"] {
-                color: #D0D0D0;
-                background-color: #333333;
-                border-radius: 10px;
-                padding: 6px 12px;
-                font-weight: 700;
-            }
-
-            QListWidget {
-                background-color: #1E1E1E;
-                border: 1px solid #333333;
-                border-radius: 10px;
-                padding: 6px;
-            }
-
-            QListWidget::item {
-                min-height: 38px;
-                padding: 4px 8px;
-                border-radius: 7px;
-            }
-
-            QListWidget::item:selected {
-                color: #081C0F;
-                background-color: #1ED760;
-            }
-
-            QLineEdit {
-                min-height: 34px;
-                padding: 0 10px;
-                background-color: #292929;
-                border: 1px solid #404040;
-                border-radius: 8px;
-            }
-
-            QLineEdit:focus {
-                border-color: #1ED760;
-            }
-
-            QPushButton {
-                min-height: 38px;
-                padding: 0 15px;
-                border-radius: 9px;
-                background-color: #2A2A2A;
-                border: 1px solid #444444;
-                font-weight: 600;
-            }
-
-            QPushButton:hover {
-                background-color: #353535;
-            }
-
-            QPushButton:disabled {
-                color: #676767;
-                background-color: #242424;
-                border-color: #303030;
-            }
-
-            QPushButton#primaryButton {
-                color: #081C0F;
-                background-color: #1ED760;
-                border: none;
-            }
-
-            QPushButton#dangerButton {
-                color: #FFFFFF;
-                background-color: #3A2020;
-                border: 1px solid #6B3030;
-            }
-            """
+        apply_app_style(
+            self
         )
