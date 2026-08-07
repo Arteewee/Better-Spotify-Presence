@@ -1,132 +1,200 @@
-# Better Spotify Presence — v2.11.0
+# Spotify+
 
-Release date: 2026-08-06
+Better Spotify Presence for Discord with synchronized lyrics.
 
-## Highlights
+# Changelog
 
-Version 2.11.0 upgrades Better Spotify Presence from a Python script into a more complete desktop application foundation with a graphical interface, runtime controls, diagnostics, multi-profile support, logging, crash recovery, and an integrated auto-updater.
+All notable changes to Spotify+ will be documented in this file.
 
-## Added
+---
 
-### Desktop application
+# v2.12.0
+Release Date: 2026-08-07
 
-- PySide6 desktop interface.
-- System tray integration.
-- Start, pause, resume, and stop controls.
-- Live song metadata, progress, and synchronized lyric display.
-- Runtime status bar for Engine, Spotify, Lyrics, and Discord RPC.
-- Dashboard, Settings, and Log Viewer windows.
-- Console-less launcher support through `SpotifyPlus.pyw`.
+## ✨ New Features
 
-### Live Lyrics Engine
+### Unlimited Profile Manager
 
-- Local lyric clock independent from Spotify polling frequency.
-- Background lyric loading.
-- Protection against stale lyric results after rapidly changing songs.
-- Multi-provider lyric lookup.
-- Metadata matching and confidence scoring.
-- Memory and persistent offline lyric cache.
-- Adaptive Spotify polling near the end of a track.
-- Lyrics remain synchronized while Spotify API requests are in cooldown.
+- Added unlimited Spotify Developer profiles.
+- Active profile switching.
+- Duplicate profile support.
+- Rename profile support.
+- Delete profile support.
+- Profile validation.
 
-### Spotify Profiles
+---
 
-- Unlimited Spotify Developer profiles.
-- Add, rename, duplicate, edit, delete, and activate profiles.
-- Separate OAuth cache for every Spotify profile.
-- Automatic migration from the legacy `.env` profile format.
-- Restart flow after changing active credentials.
+### Runtime Dashboard
 
-### Diagnostics and Logging
+Added a live diagnostics dashboard.
 
-- Central thread-safe logger.
-- Daily rotating log files.
-- Realtime Log Viewer with level and category filters.
-- Event bus and global runtime status manager.
-- Internal toast notification queue.
-- Fatal error dialog with:
-  - Restart Spotify+
-  - Open Logs
-  - Copy Error
-  - Close
-- Global exception handling for the main thread and background threads.
+Includes:
 
-### Auto Updater
+- Spotify API statistics
+- Lyrics provider metrics
+- Discord RPC metrics
+- Engine metrics
+- Runtime uptime
+- Loop statistics
+- Cache statistics
 
-- GitHub Releases update source.
-- Stable, Beta, and Nightly channels.
-- Background update checks.
-- Manual “Check for Updates” button.
-- Update Available dialog with release notes.
-- Background package download with progress and cancellation.
-- SHA-256 integrity verification.
-- Secure ZIP validation.
-- Protection against path traversal and symbolic links.
-- Backup before installation.
-- Automatic restart after applying an update.
-- Rollback when installation fails.
-- Backup retention and update result messages.
+---
 
-## Improved
+### Log Viewer
 
-- Reduced Spotify API request frequency without slowing the live lyric clock.
-- Better song-change detection.
-- More reliable Discord RPC reconnect behavior.
-- Cleaner Settings workflow.
-- Improved GUI layout and minimum sizing.
-- Better handling for Spotify API rate limits.
-- Improved application shutdown and logger flushing.
-- Safer background worker lifecycle.
+Brand new realtime log viewer.
 
-## Security
+Features:
 
-- Spotify and Discord credentials remain outside source control.
-- Update packages are verified using SHA-256.
-- Update ZIP files are checked before extraction.
-- Downgrades are rejected by the updater.
-- Unsafe archive paths and symbolic links are rejected.
+- Live streaming logs
+- Level filter
+- Category filter
+- Auto-scroll
+- Colored log levels
+- Copy selected logs
+- Open log folder
 
-## Important setup notes
+---
 
-Do not commit or include these files in release packages:
+### Notification Center
 
-- `.env`
-- `profiles.json`
-- OAuth token cache files
-- `settings.json`
-- log files
-- virtual environments
-- `__pycache__`
-- downloaded update files
+Added in-app notification system.
 
-User data remains stored under:
+Supports:
 
-```text
-%LOCALAPPDATA%\BetterSpotifyPresence
+- Success
+- Warning
+- Error
+- Information
+
+---
+
+### Crash Handler
+
+Application now captures unexpected exceptions.
+
+Added:
+
+- Fatal Error Dialog
+- Crash logging
+- Graceful shutdown
+
+---
+
+### GitHub Auto Updater
+
+Brand new update engine.
+
+Supports:
+
+- Stable channel
+- Beta channel
+- Nightly channel
+- SHA256 verification
+- Background download
+- Restart after install
+
+---
+
+### Settings Improvements
+
+- Runtime settings
+- Update channel selection
+- Manual update check
+- Better profile management
+
+---
+
+### UI Overhaul
+
+Completely redesigned interface.
+
+Includes:
+
+- Unified design language
+- Responsive layouts
+- Improved spacing
+- Improved typography
+- Better button hierarchy
+- Better status badges
+- Live status bar
+- Dark theme polish
+
+---
+
+### Performance
+
+Optimized:
+
+- Dashboard refresh
+- UI repaint
+- Status updates
+- Lyrics refresh
+- Runtime polling
+
+---
+
+### Lyrics
+
+Improved:
+
+- Persistent cache
+- Memory cache
+- Provider statistics
+- Provider confidence
+- Offline support
+
+---
+
+### Discord RPC
+
+Improved:
+
+- Better synchronization
+- Fewer unnecessary updates
+- Faster lyric refresh
+
+---
+
+### Internal
+
+Refactored:
+
+- Theme engine
+- Stylesheet system
+- Event bus integration
+- Runtime diagnostics
+- Logger
+- Update pipeline
+
+---
+
+## Fixed
+
+- Fixed profile switching issues.
+- Fixed updater release validation.
+- Fixed Discord connection state.
+- Fixed status synchronization.
+- Fixed runtime dashboard refresh.
+- Fixed log viewer rendering.
+- Fixed dropdown styling.
+- Fixed lyrics refresh timing.
+- Fixed updater asset detection.
+- Various UI consistency issues.
+- Multiple performance improvements.
+
+---
+
+## Version
+
+Application Version
+
+```
+2.12.0
 ```
 
-## Known limitations
+Engine Version
 
-- The V2 updater is primarily prepared for Windows.
-- The packaged updater helper executable will be finalized during V3 packaging.
-- Theme Manager is postponed until after the V3 stable release.
-- The first public update package must be uploaded manually to GitHub Releases.
-
-## Upgrade notes
-
-The application version is now:
-
-```text
-2.11.0
 ```
-
-The engine remains frozen at:
-
-```text
 1.0.0
 ```
-
-## Next milestone
-
-- V2.10.7 Final UI Polish
-- V3 Packaging and Deployment
